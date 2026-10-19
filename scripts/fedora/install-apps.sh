@@ -152,6 +152,7 @@ run_step "t2-fan-control" install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-
 run_step "t2-smc-control" install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
 run_step "t2-power-explorer" install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
 run_step "t2-force-click" install_rust_app "$REPO_ROOT/apps/t2-force-click" "t2-force-click"
+run_step "t2-debug" install_rust_app "$REPO_ROOT/apps/t2-debug" "t2-debug"
 if ! has_touch_bar; then
 	info "no Touch Bar on this model; skipping kait2en-touchbar"
 elif [[ "${KAIT2EN_INSTALL_TOUCHBAR:-1}" == 1 ]]; then

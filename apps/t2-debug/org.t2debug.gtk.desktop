@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=T2 Debug
+Comment=Live T2 bridgeOS process top and os_log stream
+Exec=/usr/local/bin/t2-debug
+TryExec=/usr/local/bin/t2-debug
+Icon=org.t2debug.gtk
+Terminal=false
+Categories=System;Development;
+StartupNotify=false
