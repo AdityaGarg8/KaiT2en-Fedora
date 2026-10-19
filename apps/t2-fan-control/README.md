@@ -15,6 +15,15 @@ T2 Fan Control provides a compact desktop interface for monitoring temperatures 
 
 Fan control is handled by a background daemon integrated with systemd. This keeps the state persistent across boot, suspend and resume, while the GUI talks to the daemon over a Unix socket.
 
+## Native SMC or custom curve
+
+The `Custom curve` switch in the header bar selects who drives the fans. The choice is stored as `automatic_control_enabled` and survives reboots.
+
+- On: the custom curve described below controls both fans.
+- Off: the fans run on the native SMC fan control, the same control macOS leaves them on. The app keeps showing temperatures and fan speeds but does not write fan speeds. The curve and the advanced settings are greyed out.
+
+The T2 SMC keeps manual fan mode across reboots. In native mode the daemon therefore hands both fans back to the SMC at startup. With t2smc this needs a driver that accepts `0` in `fanN_target` as hand back.
+
 ## How fan control works
 
 The controller deliberately keeps normal component cooling and retained system heat separate. It samples the available temperatures every two seconds and derives three different values.

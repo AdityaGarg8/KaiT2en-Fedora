@@ -27,7 +27,7 @@ use gtk4::{
     glib,
     prelude::*, Align, Application, ApplicationWindow, Box as GtkBox, CheckButton, ComboBoxText,
     CssProvider, DrawingArea, Entry, EventControllerFocus, EventControllerMotion, Expander,
-    GestureDrag, Grid, Label, LinkButton, Orientation, Popover, PositionType, gdk,
+    GestureDrag, Grid, Label, LinkButton, Orientation, Popover, PositionType, Switch, gdk,
 };
 use ipc::{DaemonState, Request};
 use signal_hook::consts::signal::SIGHUP;
@@ -49,7 +49,7 @@ fn kait2en_brand() -> DrawingArea {
 }
 
 const APP_ID: &str = "org.t2fancontrol.gtk";
-const APP_VERSION: &str = "0.07";
+const APP_VERSION: &str = "0.08";
 const HISTORY_CAPACITY: usize = 90;
 
 #[derive(Clone, Copy)]
@@ -137,6 +137,8 @@ struct UiRefs {
     target_label: Label,
     fan_label: Label,
     details_label: Label,
+    control_switch: Switch,
+    advanced: Expander,
     any_sensor_check: CheckButton,
     any_sensor_temp: Entry,
     any_sensor_focus: EventControllerFocus,
@@ -170,7 +172,7 @@ impl AppModel {
         let mut model = Self {
             config,
             snapshot: ControlSnapshot::default(),
-            status: String::from("Waiting for daemon"),
+            status: String::new(),
             fans: Vec::new(),
             sensor_choices: Vec::new(),
             temperature_history: VecDeque::with_capacity(HISTORY_CAPACITY),
@@ -273,6 +275,13 @@ impl AppModel {
         );
     }
 
+    fn update_active(&mut self, enabled: bool) {
+        self.send_request(
+            Request::SetActive(enabled),
+            String::from("Switching fan control mode failed"),
+        );
+    }
+
     fn update_any_sensor(&mut self, enabled: bool, temp_c: u8) {
         self.send_request(
             Request::SetAnySensor(enabled, temp_c.min(100)),
@@ -313,6 +322,15 @@ impl AppModel {
             None
         } else {
             Some((total / count) as u8)
+        }
+    }
+
+    fn average_fan_rpm(&self) -> Option<u32> {
+        let speeds = self.fans.iter().filter_map(|fan| fan.current_speed).collect::<Vec<_>>();
+        if speeds.is_empty() {
+            None
+        } else {
+            Some(speeds.iter().sum::<u32>() / speeds.len() as u32)
         }
     }
 
@@ -445,13 +463,25 @@ impl DaemonRuntime {
             ..ControlSnapshot::default()
         };
 
+        // The T2 SMC keeps manual fan mode across reboots, so native mode
+        // has to hand the fans back explicitly
+        let mut controller = Controller::new();
+        let status = if config.automatic_control_enabled {
+            String::new()
+        } else {
+            match controller.release_to_system(&mut fans) {
+                Ok(()) => String::new(),
+                Err(error) => format!("Handing fans to the SMC failed: {error}"),
+            }
+        };
+
         Ok(Self {
             config,
-            controller: Controller::new(),
+            controller,
             fans,
             temperatures,
             snapshot,
-            status: String::from("Daemon ready"),
+            status,
             last_full_sensor_read: std::time::Instant::now(),
             last_ui_request: None,
         })
@@ -512,12 +542,16 @@ impl DaemonRuntime {
         if !was_active && next_active {
             self.controller = Controller::new();
         }
-        self.status = String::from("Configuration reloaded");
+        self.status.clear();
         Ok(())
     }
 
     fn handle_request(&mut self, request: Request) -> error::Result<DaemonState> {
         self.last_ui_request = Some(std::time::Instant::now());
+        // The status line only carries errors, a successful change clears it
+        if !matches!(request, Request::GetState) {
+            self.status.clear();
+        }
         match request {
             Request::GetState => {}
             Request::SetActive(enabled) => {
@@ -526,43 +560,29 @@ impl DaemonRuntime {
                     self.snapshot.target_percent = None;
                     self.snapshot.target_rpm_per_fan.clear();
                     self.config.automatic_control_enabled = false;
-                    self.status = String::from("Fan control inactive");
                 } else {
                     self.config.automatic_control_enabled = true;
                     self.controller = Controller::new();
-                    self.status = String::from("Fan control active");
                 }
                 self.save_config()?;
             }
             Request::SetAutostart(enabled) => {
                 service::set_autostart(enabled)?;
                 self.config.autostart_enabled = enabled;
-                self.status = if enabled {
-                    String::from("Autostart enabled through systemd")
-                } else {
-                    String::from("Autostart disabled")
-                };
                 self.save_config()?;
             }
             Request::SetCurve(soak_temp_c, curve) => {
                 self.config.soak_temp_c = soak_temp_c;
                 self.config.custom_curve = curve;
-                self.status = format!("Curve updated · system target at {soak_temp_c} C");
                 self.save_config()?;
             }
             Request::SetAnySensor(enabled, temp_c) => {
                 self.config.any_sensor_enabled = enabled;
                 self.config.any_sensor_temp_c = temp_c.min(100);
-                self.status = if enabled {
-                    format!("Any-sensor protection enabled at {} C", self.config.any_sensor_temp_c)
-                } else {
-                    String::from("Any-sensor protection disabled")
-                };
                 self.save_config()?;
             }
             Request::SetSystemCoolingTime(seconds) => {
                 self.config.system_cooling_time_s = seconds.min(600);
-                self.status = format!("Overrun time set to {} s", self.config.system_cooling_time_s);
                 self.save_config()?;
             }
             Request::SetCurveSensor(key) => {
@@ -571,9 +591,6 @@ impl DaemonRuntime {
                         source.role == sysfs::TemperatureRole::System && source.key == *key
                     })
                 });
-                self.status = self.config.curve_sensor_key.as_ref()
-                    .map(|key| format!("Optional curve sensor set to {key}"))
-                    .unwrap_or_else(|| String::from("Optional curve sensor disabled"));
                 self.save_config()?;
             }
         }
@@ -640,6 +657,8 @@ fn build_ui(app: &Application) {
     brand.set_margin_start(10);
     brand.set_margin_end(10);
     header.pack_start(&brand);
+    ui.control_switch.set_valign(Align::Center);
+    header.pack_end(&ui.control_switch);
     window.set_titlebar(Some(&header));
 
     ui.status.set_halign(Align::Start);
@@ -688,10 +707,9 @@ fn build_ui(app: &Application) {
     advanced_content.append(&cooling_time_row);
     advanced_content.append(&any_sensor_row);
     advanced_content.append(&curve_sensor_row);
-    let advanced = Expander::new(Some("Advanced settings"));
-    advanced.add_css_class("secondary-control");
-    advanced.set_child(Some(&advanced_content));
-    root.append(&advanced);
+    ui.advanced.add_css_class("secondary-control");
+    ui.advanced.set_child(Some(&advanced_content));
+    root.append(&ui.advanced);
 
     install_delayed_tooltip(&ui.system_cooling_time,
         "Minimum time for forced system cooling. Release still requires 20 seconds below System chill minus 5 C."
@@ -742,6 +760,16 @@ fn build_ui(app: &Application) {
     connect_drawings(&model, &ui, &dragged_point, &drag_origin);
     sync_ui(&model.borrow(), &ui);
 
+    {
+        let model = model.clone();
+        let ui_refs = ui.clone();
+        ui.control_switch.connect_active_notify(move |switch| {
+            if ui_refs.syncing.get() { return; }
+            model.borrow_mut().update_active(switch.is_active());
+            // Falls back to the daemon state if the request failed
+            sync_ui(&model.borrow(), &ui_refs);
+        });
+    }
     {
         let model = model.clone();
         let ui_refs = ui.clone();
@@ -852,6 +880,8 @@ fn build_widgets() -> UiRefs {
         target_label: make_value(),
         fan_label: make_value(),
         details_label: make_value(),
+        control_switch: Switch::new(),
+        advanced: Expander::new(Some("Advanced settings")),
         any_sensor_check,
         any_sensor_temp,
         any_sensor_focus,
@@ -912,7 +942,8 @@ fn connect_drawings(
             let width = area.allocated_width() as f64;
             let height = area.allocated_height() as f64;
             let plot = plot_rect(width, height);
-            let target = curve_hit_target(curve, model.config.soak_temp_c, plot, x, y);
+            let target = curve_hit_target(curve, model.config.soak_temp_c, plot, x, y)
+                .filter(|_| model.config.automatic_control_enabled);
             *drag_origin.borrow_mut() = match target {
                 Some(CurveDragTarget::Point(index)) => Some(curve_to_pos(plot, &curve[index])),
                 Some(CurveDragTarget::SoakWall) => Some((x, y)),
@@ -1202,6 +1233,7 @@ fn attach_wide_pair_at(grid: &Grid, row: i32, title: &str, value: &Label) {
 fn sync_ui(model: &AppModel, ui: &UiRefs) {
     ui.syncing.set(true);
     ui.status.set_label(&model.status);
+    ui.status.set_visible(!model.status.is_empty());
     ui.cpu_label.set_label(&format_temp(model.snapshot.temperatures.cpu_temp_c));
     ui.gpu_label.set_label(&format_temp(model.snapshot.temperatures.gpu_temp_c));
     ui.effective_label
@@ -1272,6 +1304,9 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
             ),
         };
     }
+    if !model.config.automatic_control_enabled {
+        descriptors.0 = "Fan curve: native SMC";
+    }
     ui.curve_title.set_label(descriptors.0);
     ui.curve_legend.set_markup(&legend_markup(descriptors.1));
     ui.temperature_legend.set_markup(&legend_markup(descriptors.2));
@@ -1290,6 +1325,13 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
             })
             .unwrap_or_else(|| String::from("system managed")),
     );
+    let active = model.config.automatic_control_enabled;
+    ui.control_switch.set_active(active);
+    ui.advanced.set_sensitive(active);
+    ui.curve_area.set_sensitive(active);
+    if !active {
+        ui.target_label.set_label("native SMC");
+    }
     ui.any_sensor_check.set_active(model.config.any_sensor_enabled);
     if !ui.any_sensor_focus.contains_focus() {
         ui.any_sensor_temp.set_text(&model.config.any_sensor_temp_c.to_string());
@@ -1310,12 +1352,13 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
     ui.curve_sensor_combo.set_active_id(Some(
         model.config.curve_sensor_key.as_deref().unwrap_or("NONE")
     ));
-    ui.fan_label.set_label(
-        &model
-            .average_fan_percent()
-            .map(|value| format!("{value}% average"))
-            .unwrap_or_else(|| String::from("unavailable")),
-    );
+    // Percent only means something against the custom curve
+    let fan_average = if model.config.automatic_control_enabled {
+        model.average_fan_percent().map(|value| format!("{value}% average"))
+    } else {
+        model.average_fan_rpm().map(|value| format!("{value} rpm average"))
+    };
+    ui.fan_label.set_label(&fan_average.unwrap_or_else(|| String::from("unavailable")));
 
     let mut details = if model.fans.is_empty() {
         String::from("No T2 fan endpoints found.")
@@ -1359,6 +1402,9 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
 }
 
 fn full_speed_reason(model: &AppModel) -> String {
+    if !model.config.automatic_control_enabled {
+        return String::from("disabled");
+    }
     let mut reasons = Vec::new();
     if model.snapshot.heat_soak_cooling {
         let phase = match model.snapshot.system_temp_c {
@@ -1408,6 +1454,8 @@ fn draw_curve_panel(model: &AppModel, cr: &cairo::Context, width: f64, height: f
     draw_curve_scale_labels(cr, plot);
 
     let curve = model.curve_points();
+    // Native SMC mode greys out the custom curve, live markers stay in color
+    cr.push_group();
     let wall_x = temperature_to_x(plot, model.config.soak_temp_c);
     let release_x = temperature_to_x(plot, model.config.soak_temp_c.saturating_sub(2));
     let engage_x = temperature_to_x(plot, model.config.soak_temp_c.saturating_add(2));
@@ -1441,6 +1489,9 @@ fn draw_curve_panel(model: &AppModel, cr: &cairo::Context, width: f64, height: f
         } else {
             let _ = cr.fill();
         }
+    }
+    if cr.pop_group_to_source().is_ok() {
+        let _ = cr.paint_with_alpha(if model.config.automatic_control_enabled { 1.0 } else { 0.25 });
     }
 
     draw_live_marker(

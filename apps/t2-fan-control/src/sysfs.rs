@@ -132,15 +132,11 @@ impl TemperatureSnapshot {
 impl FanEndpoint {
     pub fn refresh_state(&mut self) -> Result<()> {
         self.current_speed = Some(read_u32(&join_suffix(&self.base_path, "_input"))?);
-        self.app_controlled = if self.uses_target_api {
-            read_u32(&join_suffix(&self.base_path, "_target"))
+        if !self.uses_target_api {
+            self.app_controlled = read_u32(&join_suffix(&self.base_path, "_manual"))
                 .ok()
-                .map(|target| target != 0)
-        } else {
-            read_u32(&join_suffix(&self.base_path, "_manual"))
-                .ok()
-                .map(|manual| manual != 0)
-        };
+                .map(|manual| manual != 0);
+        }
         Ok(())
     }
 
@@ -221,9 +217,9 @@ fn discover_fans_hwmon(name: &str) -> Option<Result<Vec<FanEndpoint>>> {
             Err(_) => continue,
         };
         let current_speed = read_u32(&input_path).ok();
-        let app_controlled = read_u32(&join_suffix(&fan_path, "_target"))
-            .ok()
-            .map(|target| target != 0);
+        // fanN_target reads the SMC target in both modes, the daemon sets
+        // this once it applies a speed or hands the fan back
+        let app_controlled = None;
 
         fans.push(FanEndpoint {
             name,
