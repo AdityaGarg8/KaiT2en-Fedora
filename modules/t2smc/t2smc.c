@@ -9,7 +9,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#define T2SMC_VERSION "0.0.3"
+#define T2SMC_VERSION "0.0.4"
 
 #include <linux/delay.h>
 #include <linux/acpi.h>
@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/bitops.h>
 #include <linux/math64.h>
+#include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -31,6 +32,7 @@
 #include <linux/suspend.h>
 #include <linux/rtc.h>
 #include <linux/string.h>
+#include <linux/uaccess.h>
 #include <linux/watchdog.h>
 #include <linux/workqueue.h>
 
@@ -272,6 +274,9 @@ struct t2smc_device {
 	u64 power_last_event_ns;
 	u8 power_status;
 	bool power_status_valid;
+
+	/* /dev/smc raw key access */
+	struct miscdevice miscdev;
 };
 
 /* -- MMIO helpers -- */
@@ -330,7 +335,7 @@ static int iomem_wait_irq(struct t2smc_device *t2)
 	}
 
 	WRITE_ONCE(t2->cmd_irq, false);
-	dev_warn(t2->dev, "no KeyDone interrupt, reverting to polling\n");
+	dev_dbg(t2->dev, "no KeyDone interrupt, reverting to polling\n");
 	if (iomem_cmd_done(t2))
 		return 0;
 	return -ETIMEDOUT;
@@ -1164,6 +1169,11 @@ static int t2smc_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 		case hwmon_fan_target:
 			if (val < 0)
 				return -EINVAL;
+			/* 0 hands the fan back to the SMC fan control */
+			if (!val) {
+				clear_bit(channel, &t2->fan_manual);
+				return t2smc_write_fan_manual(t2, channel, 0);
+			}
 			speed = (unsigned int)val;
 			/* Enter manual mode before setting target speed */
 			ret = t2smc_write_fan_manual(t2, channel, 1);
@@ -2659,6 +2669,206 @@ static int t2smc_setup_events(struct platform_device *pdev,
 	return 0;
 }
 
+/*
+ * -- Raw key access through /dev/smc --
+ * Same ioctl ABI as the macsmc patch 3014-mfd-macsmc-add-ioctl-to-access-smc-keys
+ * from t2linux/linux-t2-patches, so tools work with both drivers. Keys the
+ * driver owns or that control charging, clock, watchdog, events and fans
+ * cannot be written.
+ */
+typedef u32 smc_key;
+
+#define T2SMC_KEY(a, b, c, d) \
+	(((u32)(a) << 24) | ((u32)(b) << 16) | ((u32)(c) << 8) | (u32)(d))
+
+struct apple_smc_key_info {
+	u32 type_code;
+	u8 size;
+	u8 flags;
+};
+
+struct ioctl_smc_rw_payload {
+	smc_key key;
+	size_t size;
+	u8 buf[32];
+};
+
+struct ioctl_smc_index_payload {
+	int index;
+	smc_key key;
+};
+
+struct ioctl_smc_info_payload {
+	smc_key key;
+	struct apple_smc_key_info info;
+};
+
+#define APPLE_SMC_MAGIC 'S'
+#define IOCTL_SMC_READ           _IOWR(APPLE_SMC_MAGIC, 1, struct ioctl_smc_rw_payload)
+#define IOCTL_SMC_WRITE          _IOW(APPLE_SMC_MAGIC, 2, struct ioctl_smc_rw_payload)
+#define IOCTL_SMC_GET_KEY_INDEX  _IOWR(APPLE_SMC_MAGIC, 3, struct ioctl_smc_index_payload)
+#define IOCTL_SMC_GET_KEY_INFO   _IOWR(APPLE_SMC_MAGIC, 4, struct ioctl_smc_info_payload)
+
+static void t2smc_key_to_str(smc_key key, char *str)
+{
+	str[0] = key >> 24;
+	str[1] = key >> 16;
+	str[2] = key >> 8;
+	str[3] = key;
+	str[4] = '\0';
+}
+
+static smc_key t2smc_str_to_key(const char *str)
+{
+	return T2SMC_KEY(str[0], str[1], str[2], str[3]);
+}
+
+static bool t2smc_key_write_denied(smc_key key)
+{
+	switch (key) {
+	case T2SMC_KEY('C', 'H', '0', 'I'):
+	case T2SMC_KEY('C', 'H', '0', 'C'):
+	case T2SMC_KEY('C', 'H', '0', 'K'):
+	case T2SMC_KEY('C', 'H', '0', 'B'):
+	case T2SMC_KEY('C', 'H', 'T', 'E'):
+	case T2SMC_KEY('C', 'H', 'L', 'S'):
+	case T2SMC_KEY('B', 'C', 'L', 'M'):
+	case T2SMC_KEY('M', 'B', 'S', 'E'):
+	case T2SMC_KEY('C', 'L', 'K', 'L'):
+	case T2SMC_KEY('C', 'L', 'K', 'O'):
+	case T2SMC_KEY('O', 'S', 'W', 'D'):
+	case T2SMC_KEY('N', 'A', 'T', 'J'):
+	case T2SMC_KEY('N', 'A', 'T', 'i'):
+	case T2SMC_KEY('N', 'E', 'S', 'N'):
+	case T2SMC_KEY('M', 'O', 'C', 'N'):
+	case T2SMC_KEY('L', 'K', 'S', 'B'):
+	case T2SMC_KEY('N', 'T', 'O', 'K'):
+	case T2SMC_KEY('N', 'T', 'A', 'P'):
+	case T2SMC_KEY('F', '0', 'T', 'g'):
+	case T2SMC_KEY('F', '1', 'T', 'g'):
+	case T2SMC_KEY('F', '0', 'M', 'd'):
+	case T2SMC_KEY('F', '1', 'M', 'd'):
+	case T2SMC_KEY('F', 'S', '!', ' '):
+		return true;
+	}
+	return false;
+}
+
+static long t2smc_smcdev_rw(struct t2smc_device *t2, void __user *argp,
+			    bool write)
+{
+	struct ioctl_smc_rw_payload payload;
+	struct t2smc_entry *entry;
+	char key[5];
+	int ret;
+
+	if (copy_from_user(&payload, argp, sizeof(payload)))
+		return -EFAULT;
+
+	t2smc_key_to_str(payload.key, key);
+	entry = t2smc_get_entry_by_key(t2, key);
+	if (IS_ERR(entry))
+		return PTR_ERR(entry);
+	if (payload.size != entry->len || payload.size > sizeof(payload.buf))
+		return -EINVAL;
+
+	if (write) {
+		if (t2smc_key_write_denied(payload.key))
+			return -EPERM;
+		return t2smc_write_key(t2, key, payload.buf, payload.size);
+	}
+
+	ret = t2smc_read_key(t2, key, payload.buf, payload.size);
+	if (ret)
+		return ret;
+	if (copy_to_user(argp, &payload, sizeof(payload)))
+		return -EFAULT;
+	return 0;
+}
+
+static long t2smc_smcdev_ioctl(struct file *file, unsigned int cmd,
+			       unsigned long arg)
+{
+	struct t2smc_device *t2 = container_of(file->private_data,
+					       struct t2smc_device, miscdev);
+	void __user *argp = (void __user *)arg;
+	struct t2smc_entry *entry;
+	char key[5];
+
+	switch (cmd) {
+	case IOCTL_SMC_READ:
+		return t2smc_smcdev_rw(t2, argp, false);
+	case IOCTL_SMC_WRITE:
+		return t2smc_smcdev_rw(t2, argp, true);
+	case IOCTL_SMC_GET_KEY_INDEX: {
+		struct ioctl_smc_index_payload payload;
+
+		if (copy_from_user(&payload, argp, sizeof(payload)))
+			return -EFAULT;
+		if (payload.index < 0 || payload.index >= t2->key_count)
+			return -EINVAL;
+
+		entry = t2smc_get_entry_by_index(t2, payload.index);
+		if (IS_ERR(entry))
+			return PTR_ERR(entry);
+		payload.key = t2smc_str_to_key(entry->key);
+
+		if (copy_to_user(argp, &payload, sizeof(payload)))
+			return -EFAULT;
+		return 0;
+	}
+	case IOCTL_SMC_GET_KEY_INFO: {
+		struct ioctl_smc_info_payload payload;
+
+		if (copy_from_user(&payload, argp, sizeof(payload)))
+			return -EFAULT;
+
+		t2smc_key_to_str(payload.key, key);
+		entry = t2smc_get_entry_by_key(t2, key);
+		if (IS_ERR(entry))
+			return PTR_ERR(entry);
+		payload.info.type_code = t2smc_str_to_key(entry->type);
+		payload.info.size = entry->len;
+		payload.info.flags = entry->flags;
+
+		if (copy_to_user(argp, &payload, sizeof(payload)))
+			return -EFAULT;
+		return 0;
+	}
+	default:
+		return -EINVAL;
+	}
+}
+
+static const struct file_operations t2smc_smcdev_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl = t2smc_smcdev_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
+	.llseek = noop_llseek,
+};
+
+static void t2smc_unregister_smcdev(void *data)
+{
+	misc_deregister(data);
+}
+
+static int t2smc_register_smcdev(struct t2smc_device *t2)
+{
+	int ret;
+
+	t2->miscdev.minor = MISC_DYNAMIC_MINOR;
+	t2->miscdev.name = "smc";
+	t2->miscdev.fops = &t2smc_smcdev_fops;
+	t2->miscdev.parent = t2->dev;
+	t2->miscdev.mode = 0600;
+
+	ret = misc_register(&t2->miscdev);
+	if (ret)
+		return ret;
+	return devm_add_action_or_reset(t2->dev, t2smc_unregister_smcdev,
+					&t2->miscdev);
+}
+
 /* devm action: cleanup non-devm resources after hwmon devres */
 static void t2smc_devm_cleanup(void *data)
 {
@@ -2984,6 +3194,10 @@ static int t2smc_probe(struct platform_device *pdev)
 		return ret;
 
 	ret = t2smc_register_watchdog(t2);
+	if (ret)
+		return ret;
+
+	ret = t2smc_register_smcdev(t2);
 	if (ret)
 		return ret;
 

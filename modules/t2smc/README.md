@@ -158,17 +158,30 @@ cat "$HWMON/fan2_input"
 
 # Set fan 1 to 3000 RPM (enters manual mode automatically)
 echo 3000 | sudo tee "$HWMON/fan1_target"
+
+# Hand fan 1 back to the SMC fan control
+echo 0 | sudo tee "$HWMON/fan1_target"
 ```
 
 The fan speed values are in RPM. Writing to `fanN_target` switches the fan to
-manual mode and sets the target speed.
+manual mode and sets the target speed. Writing `0` returns the fan to the SMC
+fan control.
 
 The attributes `fanN_min` and `fanN_max` are limits reported by the SMC.
 `fanN_min` is writable and `fanN_max` is read-only. If the SMC provides a fan
 name (`FnID`), it appears in `fanN_label`.
 
 After resume the driver restores manual mode and the last target speed for
-every fan that was set through `fanN_target`.
+every fan that was set through `fanN_target` and not handed back.
+
+### Raw SMC key access
+
+`/dev/smc` (root only) reads and writes any SMC key through ioctls. The ABI
+matches the macsmc patch `3014-mfd-macsmc-add-ioctl-to-access-smc-keys` from
+t2linux/linux-t2-patches: `IOCTL_SMC_READ`, `IOCTL_SMC_WRITE`,
+`IOCTL_SMC_GET_KEY_INDEX` and `IOCTL_SMC_GET_KEY_INFO` with magic `'S'`.
+Keys for charging, clock, watchdog, SMC events and fan control cannot be
+written this way.
 
 ### Battery charge limit
 
