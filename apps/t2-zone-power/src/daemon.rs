@@ -20,8 +20,9 @@ use crate::{
 const TICK: Duration = Duration::from_millis(250);
 const REDISCOVER: Duration = Duration::from_secs(10);
 
-/// Applies the SMC power limit steps like X86PlatformShim and AGPM do on macOS
-pub fn run() -> Result<()> {
+/// Applies the SMC power limit steps like X86PlatformShim and AGPM do on macOS.
+/// With debug every step change is logged.
+pub fn run(debug: bool) -> Result<()> {
     let stop = Arc::new(AtomicBool::new(false));
     for signal in [SIGTERM, SIGINT] {
         signal_hook::flag::register(signal, stop.clone()).map_err(|source| ZonePowerError::Io {
@@ -72,14 +73,16 @@ pub fn run() -> Result<()> {
         match PLimits::read(&t2smc) {
             Ok(limits) => {
                 if last != Some(limits) {
-                    eprintln!(
-                        "plimit cpu {} igpu {} mem {} idle {} dgpu {}",
-                        format_step(limits.cpu.step, limits.cpu.hard),
-                        format_step(limits.igpu.step, limits.igpu.hard),
-                        format_step(limits.memory.step, limits.memory.hard),
-                        format_step(limits.idle.step, limits.idle.hard),
-                        format_step(limits.dgpu.step, limits.dgpu.hard),
-                    );
+                    if debug {
+                        eprintln!(
+                            "plimit cpu {} igpu {} mem {} idle {} dgpu {}",
+                            format_step(limits.cpu.step, limits.cpu.hard),
+                            format_step(limits.igpu.step, limits.igpu.hard),
+                            format_step(limits.memory.step, limits.memory.hard),
+                            format_step(limits.idle.step, limits.idle.hard),
+                            format_step(limits.dgpu.step, limits.dgpu.hard),
+                        );
+                    }
                     last = Some(limits);
                 }
                 apply(&limits, cpu.as_ref(), idle.as_ref(), igpu.as_ref(), dgpu.as_ref());

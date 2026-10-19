@@ -43,6 +43,9 @@ The daemon only acts on the data version 3 layout of the SMC power limits
 The GUI shows zone power against target, zone throttle, the applied limits
 and CPU, dGPU and fin stack temperatures. It has no settings.
 
+The daemon logs only errors. Started with `--daemon --debug` it also logs
+every change of the power limit steps to the journal.
+
 ## Requirements
 
 - t2smc with `smc_plimit_raw`, `smc_plimit_version` and the GPU step count files

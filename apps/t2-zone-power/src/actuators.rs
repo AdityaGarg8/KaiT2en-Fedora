@@ -2,11 +2,12 @@
 
 use std::{
     cell::Cell,
+    io,
     path::{Path, PathBuf},
 };
 
 use crate::{
-    error::Result,
+    error::{Result, ZonePowerError},
     sysfs::{glob_paths, read_string, read_value, write_value},
 };
 
@@ -43,7 +44,13 @@ impl CpuCap {
         for policy in &self.policies {
             let path = policy.join("scaling_max_freq");
             if read_value::<u32>(&path).ok() != Some(khz) {
-                write_value(&path, khz)?;
+                match write_value(&path, khz) {
+                    // A policy is busy while CPU hotplug rebuilds it on
+                    // resume, the next tick writes it again
+                    Err(ZonePowerError::Io { source, .. })
+                        if source.kind() == io::ErrorKind::ResourceBusy => {}
+                    result => result?,
+                }
             }
         }
         Ok(())

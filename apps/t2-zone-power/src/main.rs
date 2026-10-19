@@ -10,7 +10,8 @@ use gtk4::glib;
 
 fn main() -> glib::ExitCode {
     if std::env::args().any(|arg| arg == "--daemon") {
-        if let Err(error) = daemon::run() {
+        let debug = std::env::args().any(|arg| arg == "--debug");
+        if let Err(error) = daemon::run(debug) {
             eprintln!("{error}");
             return glib::ExitCode::from(1);
         }
