@@ -238,7 +238,15 @@ impl Layout {
         }
         self.buttons
             .iter()
-            .position(|button| x >= f64::from(button.left) && x < f64::from(button.right))
+            .position(|button| {
+                // Let the virtual Esc key respond all the way to the left edge
+                let left = if button.action == Action::Key(Key::Esc) {
+                    0.0
+                } else {
+                    f64::from(button.left)
+                };
+                x >= left && x < f64::from(button.right)
+            })
     }
 }
 
