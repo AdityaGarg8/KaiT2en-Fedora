@@ -60,7 +60,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             click_strength: CLICK_STRENGTH_MEDIUM,
-            force_click_threshold_percent: 175,
+            force_click_threshold_percent: MAX_FORCE_CLICK_PERCENT,
             force_click_disabled: false,
             action_kind: ActionKind::None,
             key_combo: String::new(),

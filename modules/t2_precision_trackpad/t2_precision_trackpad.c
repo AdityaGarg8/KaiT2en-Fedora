@@ -123,10 +123,10 @@ static u32 t2_trackpad_click_strength_multiplier_q16(void)
  * single threshold. It is tunable since there is no confirmed real 
  * second-tier constant.
  */
-static unsigned int force_click_threshold_percent = 175;
+static unsigned int force_click_threshold_percent = 300;
 module_param(force_click_threshold_percent, uint, 0644);
 MODULE_PARM_DESC(force_click_threshold_percent,
-	"force click (actuator) threshold as a percent of the plain click threshold (default 175)");
+	"force click (actuator) threshold as a percent of the plain click threshold (default 300)");
 
 /*
  * Independent of the threshold above: some users disable tap-to-click in
