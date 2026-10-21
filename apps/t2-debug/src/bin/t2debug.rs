@@ -44,6 +44,14 @@ enum Command {
         #[arg(long, default_value_t = 12)]
         top: usize,
     },
+    /// Ask the hub to open a service channel and print its reply (RE probe).
+    /// A bare name gets the `com.apple.instruments.server.services.` prefix.
+    /// With a selector, call it on the opened channel with an optional string arg.
+    Channel {
+        name: String,
+        selector: Option<String>,
+        arg: Option<String>,
+    },
     /// Call an arbitrary deviceinfo selector (RE probe), with an optional string arg
     Call {
         selector: String,
@@ -122,6 +130,9 @@ fn main() -> Result<()> {
         Command::Procs => procs(&mut dtx)?,
         Command::Info => info(&mut dtx)?,
         Command::Ls { path } => ls(&mut dtx, &path)?,
+        Command::Channel { name, selector, arg } => {
+            channel(&mut dtx, &name, selector.as_deref(), arg.as_deref())?
+        }
         Command::Call { selector, arg } => call(&mut dtx, &selector, arg.as_deref())?,
         Command::Sysmon { watch, count, top } => sysmon(&mut dtx, watch, count, top)?,
         Command::Logs { count, save, filter } => {
@@ -185,6 +196,34 @@ fn ls(dtx: &mut Dtx, path: &str) -> Result<()> {
         Payload::Obj(Obj::Null) | Payload::None => eprintln!("{path}: no listing"),
         Payload::Obj(other) => print_json(&other),
         Payload::Raw(_) => eprintln!("{path}: unexpected raw reply"),
+    }
+    Ok(())
+}
+
+fn channel(dtx: &mut Dtx, name: &str, selector: Option<&str>, arg: Option<&str>) -> Result<()> {
+    let name = if name.contains('.') {
+        name.to_owned()
+    } else {
+        format!("com.apple.instruments.server.services.{name}")
+    };
+    let ident = dtx.send(
+        0,
+        Some("_requestChannelWithCode:identifier:"),
+        &[Arg::I32(1), Arg::Obj(Obj::Str(name.clone()))],
+        true,
+    )?;
+    let mut reply = dtx.wait(ident)?;
+    println!("{name}: flags 0x{:x}", reply.flags);
+    if let Some(selector) = selector {
+        let args: Vec<Arg> = arg.map(|value| Arg::Obj(Obj::Str(value.into()))).into_iter().collect();
+        reply = dtx.call(1, selector, &args)?;
+        println!("{selector}: flags 0x{:x}", reply.flags);
+    }
+    match reply.payload {
+        Payload::Obj(Obj::Str(text)) => println!("{text}"),
+        Payload::Obj(obj) => print_json(&obj),
+        Payload::Raw(bytes) => println!("<{} raw bytes> {}", bytes.len(), hexdump(&bytes)),
+        Payload::None => println!("(no payload)"),
     }
     Ok(())
 }
