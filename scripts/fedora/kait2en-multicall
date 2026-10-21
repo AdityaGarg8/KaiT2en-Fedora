@@ -1,12 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repository=${KAIT2EN_REPOSITORY:-/usr/local/src/KaiT2en-Fedora}
+repository_branch=${KAIT2EN_REPOSITORY_BRANCH:-main}
+
+# The checkout is system managed and may hold build leftovers, so it is forced
+# to the remote branch like kait2en-install does.
+refresh_repository() {
+	local git=(git -c safe.directory="$repository" -C "$repository")
+	[[ -d $repository/.git ]] || {
+		printf 'The KaiT2en Git checkout is missing: %s\n' "$repository" >&2
+		exit 1
+	}
+	if [[ -n $(find "$repository" ! -user "$(id -u)" -print -quit) ]]; then
+		sudo chown -R "$(id -u):$(id -g)" "$repository"
+	fi
+	"${git[@]}" fetch origin "$repository_branch"
+	"${git[@]}" checkout "$repository_branch"
+	"${git[@]}" reset --hard "origin/$repository_branch"
+	"${git[@]}" clean -fd
+}
+
 case ${0##*/} in
 	edit-grub)
 		exec sudo nano /etc/default/grub
 		;;
 	update-grub)
 		exec sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+		;;
+	update-modules)
+		refresh_repository
+		sudo bash "$repository/scripts/fedora/install-dkms-modules.sh"
+		sudo bash "$repository/scripts/fedora/install-gpu-runtime-pm.sh" install --defer-initramfs
+		sudo bash "$repository/scripts/fedora/rebuild-initramfs.sh"
+		printf 'Reboot to load the updated modules.\n'
+		;;
+	update-apps)
+		refresh_repository
+		exec sudo bash "$repository/scripts/fedora/install-apps.sh"
+		;;
+	boot-macos)
+		entry=$(efibootmgr | sed -nE 's/^Boot([0-9A-Fa-f]{4})\*? .*CoreServices.*boot\.efi.*/\1/p' | head -n1)
+		if [[ -z $entry ]]; then
+			printf 'No macOS boot entry found in the EFI boot menu\n' >&2
+			exit 1
+		fi
+		sudo efibootmgr --bootnext "$entry" >/dev/null
+		exec systemctl reboot
 		;;
 	*)
 		printf 'Unknown KaiT2en multicall command: %s\n' "${0##*/}" >&2

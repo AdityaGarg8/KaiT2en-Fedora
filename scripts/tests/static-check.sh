@@ -162,6 +162,9 @@ grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
 	scripts/fedora/install-kernel-args.sh
 grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/edit-grub' scripts/fedora/install.sh
 grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/update-grub' scripts/fedora/install.sh
+grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/boot-macos' scripts/fedora/install.sh
+grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/update-modules' scripts/fedora/install.sh
+grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/update-apps' scripts/fedora/install.sh
 grep -Fq 'exec sudo nano /etc/default/grub' scripts/fedora/kait2en-multicall
 grep -Fq 'exec sudo grub2-mkconfig -o /boot/grub2/grub.cfg' \
 	scripts/fedora/kait2en-multicall
