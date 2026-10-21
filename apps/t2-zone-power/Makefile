@@ -4,7 +4,7 @@ GTK_UPDATE_ICON_CACHE ?= gtk-update-icon-cache
 
 APP_ID := org.t2zonepower.gtk
 BIN_NAME := t2-zonepower-gtk
-BUILD_DIR := target/release
+BUILD_DIR := $(or $(CARGO_TARGET_DIR),target)/release
 BIN_SRC := $(BUILD_DIR)/$(BIN_NAME)
 DESKTOP_SRC := $(APP_ID).desktop
 ICON_SRC := assets/icons/hicolor/scalable/apps/$(APP_ID).svg

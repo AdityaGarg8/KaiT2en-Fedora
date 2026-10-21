@@ -4,7 +4,7 @@ PREFIX ?= /usr/local
 DESTDIR ?=
 
 BIN := kait2en-touchbar
-BIN_SRC := target/release/$(BIN)
+BIN_SRC := $(or $(CARGO_TARGET_DIR),target)/release/$(BIN)
 BIN_DIR := $(DESTDIR)$(PREFIX)/bin
 USER_UNIT_DIR := $(DESTDIR)$(PREFIX)/lib/systemd/user
 SYSTEM_UNIT_DIR := $(DESTDIR)$(PREFIX)/lib/systemd/system

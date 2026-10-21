@@ -10,7 +10,7 @@ CONFIG_DST=/etc/kait2en/t2-touchid.conf
 build_touchid() {
 	local target_user="${SUDO_USER:-}"
 	[[ -n "$target_user" && "$target_user" != root ]] || fail "t2-touchid must be built by the invoking user"
-	sudo -H -u "$target_user" make -C "$COMPONENT" build
+	build_cargo_project "$COMPONENT" "$target_user"
 }
 
 install_policy() {
@@ -69,8 +69,4 @@ if (( build_status == 0 )); then
 	fi
 else
 	record_error "Touch ID installation skipped because its build failed; existing installation retained"
-fi
-
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
-	clean_cargo_build "$COMPONENT" "$SUDO_USER"
 fi

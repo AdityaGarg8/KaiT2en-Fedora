@@ -93,8 +93,8 @@ sudo ./apps/t2-touchbar/install.sh
 ```
 
 The script installs its build dependencies, configures device access and the
-user service, disables conflicting Touch Bar daemons, and removes the Cargo
-build directory after copying the release binary.
+user service and disables conflicting Touch Bar daemons. It builds into the
+shared KaiT2en Cargo target directory `~/.cache/kait2en/cargo-target`.
 
 The Fedora installer creates the `kait2en-touchbar` device-access group, adds
 the invoking user, installs the global user unit, and replaces conflicting

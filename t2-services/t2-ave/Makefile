@@ -4,7 +4,7 @@ PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 LIBEXECDIR ?= $(PREFIX)/libexec
 SYSTEMD_UNIT_DIR ?= $(PREFIX)/lib/systemd/system
-TARGET_DIR ?= target
+TARGET_DIR ?= $(or $(CARGO_TARGET_DIR),target)
 
 .PHONY: all build test install install-bin install-integration clean
 all: build

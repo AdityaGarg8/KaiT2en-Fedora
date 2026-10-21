@@ -51,8 +51,7 @@ target_user="${SUDO_USER:-}"
 	fail "t2-hybrid-gpu-control must be built for the user who invoked sudo"
 
 info "building and installing t2-hybrid-gpu-control"
-sudo -H -u "$target_user" make -C "$APP_DIR" build
+build_cargo_project "$APP_DIR" "$target_user"
 make -C "$APP_DIR" install
-clean_cargo_build "$APP_DIR" "$target_user"
 
 info "t2-hybrid-gpu-control installed"

@@ -16,6 +16,13 @@ fi
 
 KAIT2EN_INSTALL_HARD_ERRORS="$KAIT2EN_INSTALL_ERRORS.hard"
 
+# All Rust projects build into one target directory in the invoking user's
+# cache. The shared GTK stack compiles once and updates build incrementally.
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
+	CARGO_TARGET_DIR="$(getent passwd "$SUDO_USER" | cut -d: -f6)/.cache/kait2en/cargo-target"
+	export CARGO_TARGET_DIR
+fi
+
 record_error() {
 	local message="$*"
 	printf '[kait2en] error: %s\n' "$message" >&2
@@ -91,14 +98,10 @@ warn() {
 		printf '[kait2en] error: cannot write warning report\n' >&2
 }
 
-clean_cargo_build() {
+# sudo resets the environment, so the shared target directory is passed on.
+build_cargo_project() {
 	local path=$1 target_user=$2
-	if [[ "${KAIT2EN_CARGO_CLEAN:-1}" == 0 ]]; then
-		return 0
-	fi
-	if ! sudo -H -u "$target_user" make -C "$path" clean; then
-		warn "could not remove Cargo build artifacts below $path"
-	fi
+	sudo -H -u "$target_user" env CARGO_TARGET_DIR="$CARGO_TARGET_DIR" make -C "$path" build
 }
 
 fail() {

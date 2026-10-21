@@ -50,10 +50,6 @@ device_access_ready() {
 	! user_manager_is_running || device_group_is_live
 }
 
-clean_build() {
-	clean_cargo_build "$APP_DIR" "$target_user"
-}
-
 install_dependencies() {
 	dnf install -y adwaita-sans-fonts cargo gcc libinput-devel make pkgconf-pkg-config rust systemd-devel
 	require_command cargo make
@@ -65,15 +61,8 @@ prepare_device_access() {
 }
 
 build_and_install() {
-	if ! sudo -H -u "$target_user" make -C "$APP_DIR" build; then
-		clean_build
-		return 1
-	fi
-	if ! make -C "$APP_DIR" install; then
-		clean_build
-		return 1
-	fi
-	clean_build
+	build_cargo_project "$APP_DIR" "$target_user"
+	make -C "$APP_DIR" install
 }
 
 configure_system() {

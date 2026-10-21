@@ -4,7 +4,7 @@ GTK_UPDATE_ICON_CACHE ?= gtk-update-icon-cache
 
 APP_ID := org.t2dgpucontrol.gtk
 BIN_NAME := t2-dgpu-control
-BUILD_DIR := target/release
+BUILD_DIR := $(or $(CARGO_TARGET_DIR),target)/release
 BIN_SRC := $(BUILD_DIR)/$(BIN_NAME)
 HELPER_SRC := contrib/t2-dgpu-control-helper
 HELPER_NAME := t2-dgpu-control-helper

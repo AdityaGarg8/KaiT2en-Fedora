@@ -5,7 +5,7 @@ BINDIR ?= $(PREFIX)/bin
 SYSTEMD_UNIT_DIR ?= $(PREFIX)/lib/systemd/system
 DATADIR ?= $(PREFIX)/share
 SYSCONFDIR ?= /etc
-TARGET_DIR ?= target
+TARGET_DIR ?= $(or $(CARGO_TARGET_DIR),target)
 
 .PHONY: all build test install install-bin install-integration clean
 all: build

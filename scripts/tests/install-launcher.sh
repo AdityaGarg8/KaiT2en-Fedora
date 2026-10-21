@@ -48,7 +48,7 @@ EOF
 cat >"$fake_bin/sudo" <<'EOF'
 #!/usr/bin/env bash
 printf 'sudo cwd=%s command=%s\n' "$PWD" "$*" >>"$KAIT2EN_TEST_LOG"
-[[ "${KAIT2EN_TEST_INSTALL_FAILS:-0}" == 1 && "$*" == "env KAIT2EN_CARGO_CLEAN=1 bash ./scripts/fedora/install.sh" ]] && exit 1
+[[ "${KAIT2EN_TEST_INSTALL_FAILS:-0}" == 1 && "$*" == "bash ./scripts/fedora/install.sh" ]] && exit 1
 exit 0
 EOF
 chmod 0755 "$fake_bin"/*
@@ -64,11 +64,10 @@ printf 'n\n' |
 		KAIT2EN_TEST_REPOSITORY="$fake_repo" \
 		KAIT2EN_TEST_ORIGIN_URL_FILE="$origin_url_file" \
 		KAIT2EN_TEST_LOG="$log" \
-		KAIT2EN_CARGO_CLEAN=0 \
 		bash "$launcher" >"$initial_output"
 
 grep -Fq "git $git_prefix pull --ff-only origin main" "$log"
-grep -Fq "sudo cwd=$fake_repo command=env KAIT2EN_CARGO_CLEAN=0 bash ./scripts/fedora/install.sh" "$log"
+grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 grep -Fq 'command=/usr/local/bin/kait2en-prepare --complete' "$log"
 grep -Fq "Repository: $fake_repo" "$initial_output"
 grep -Fq 'Run kait2en-install at any time to update KaiT2en.' "$initial_output"
@@ -89,7 +88,7 @@ printf 'n\n' |
 		KAIT2EN_TEST_LOG="$log" \
 		bash "$launcher" >/dev/null
 grep -Fq "git $git_prefix pull --ff-only origin main" "$log"
-grep -Fq "sudo cwd=$fake_repo command=env KAIT2EN_CARGO_CLEAN=1 bash ./scripts/fedora/install.sh" "$log"
+grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 ! grep -Fq 'kait2en-prepare --complete' "$log"
 
 mkdir -p "$fake_repo/auto-installer/runtime"
@@ -130,7 +129,7 @@ printf 'n\n' |
 		KAIT2EN_TEST_LOG="$log" \
 		bash "$fake_repo/auto-installer/runtime/kait2en-install" >/dev/null
 grep -Fq "git $git_prefix pull --ff-only origin main" "$log"
-grep -Fq "sudo cwd=$fake_repo command=env KAIT2EN_CARGO_CLEAN=1 bash ./scripts/fedora/install.sh" "$log"
+grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 ! grep -Fq 'flock ' "$log"
 
 : >"$log"
@@ -153,7 +152,7 @@ grep -Fq 'Repairing the KaiT2en origin URL (found: https://github.com).' "$repai
 grep -Fq "git $git_prefix remote set-url origin $canonical_url" "$log"
 grep -Fxq "$canonical_url" "$origin_url_file"
 grep -Fq "git $git_prefix pull --ff-only origin main" "$log"
-grep -Fq "sudo cwd=$fake_repo command=env KAIT2EN_CARGO_CLEAN=1 bash ./scripts/fedora/install.sh" "$log"
+grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 
 # A step reporting errors must not also trip the generic ERR trap. That
 # would bury run_project_installer's own explanation under a misleading

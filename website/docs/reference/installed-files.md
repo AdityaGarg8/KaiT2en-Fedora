@@ -330,3 +330,9 @@ markers below `$XDG_CACHE_HOME/t2-kernel-builder/build` (normally
 `$XDG_CONFIG_HOME/t2-kernel-builder` (normally `~/.config/t2-kernel-builder`).
 Kernels installed through the app add their normal files below `/boot` and
 `/lib/modules/<kernel>/`; package-managed builds are installed through DNF.
+
+The installer builds all KaiT2en Rust apps and services into one shared Cargo
+target directory at `~/.cache/kait2en/cargo-target` of the user who invoked
+`sudo`. The apps share their GTK dependencies there, and updates rebuild only
+what changed. Deleting the directory is safe. The next installer run rebuilds
+it.

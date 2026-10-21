@@ -1,6 +1,6 @@
 CARGO ?= cargo
 CARGO_FLAGS ?= --locked
-TARGET_DIR ?= target
+TARGET_DIR ?= $(or $(CARGO_TARGET_DIR),target)
 INSTALL ?= install
 PREFIX ?= /usr/local
 

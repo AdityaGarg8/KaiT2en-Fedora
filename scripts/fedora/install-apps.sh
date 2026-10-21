@@ -71,9 +71,15 @@ remove_t2_cpu_control() {
 		warn "could not refresh the icon cache"
 }
 
-clean_rust_build() {
-	local path=$1 target_user=$2
-	clean_cargo_build "$path" "$target_user"
+# Rust projects used to build into their own target directory, and some
+# installers never cleaned it. They build into the shared one now.
+remove_project_cargo_targets() {
+	local dir
+	for dir in "$REPO_ROOT"/apps/*/target "$REPO_ROOT"/t2-services/*/target; do
+		[[ -f "$dir/CACHEDIR.TAG" ]] || continue
+		info "removing old Cargo build directory $dir"
+		rm -rf "$dir"
+	done
 }
 
 install_rust_app() {
@@ -84,20 +90,17 @@ install_rust_app() {
 	[[ -n "$target_user" && "$target_user" != root ]] ||
 		fail "$name must be built for the user who invoked sudo"
 
-	if ! sudo -H -u "$target_user" make -C "$path" build; then
-		clean_rust_build "$path" "$target_user"
+	if ! build_cargo_project "$path" "$target_user"; then
 		warn "$name build failed; skipping this app and continuing"
 		return 0
 	fi
 	if ! make -C "$path" install; then
-		clean_rust_build "$path" "$target_user"
 		warn "$name installation failed; continuing with the remaining apps"
 		return 0
 	fi
 	if [[ "$name" == t2-journal ]]; then
 		python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-journal record-source || warn "could not record t2-journal installation ownership"
 	fi
-	clean_rust_build "$path" "$target_user"
 }
 
 install_gpu_control() {
@@ -148,6 +151,7 @@ install_app_assets() {
 }
 run_step "install app assets" install_app_assets
 run_step "remove obsolete apps" remove_obsolete_apps
+run_step "remove old Cargo build directories" remove_project_cargo_targets
 run_step "t2-fan-control" install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
 run_step "t2-smc-control" install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
 run_step "t2-power-explorer" install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
