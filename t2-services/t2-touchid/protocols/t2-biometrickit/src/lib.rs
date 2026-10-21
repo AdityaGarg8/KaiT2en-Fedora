@@ -156,6 +156,90 @@ impl Session {
         Ok(u32::from_le_bytes(bytes[0..4].try_into().unwrap()))
     }
 
+    /// Issue any BiometricKit command and return the SEP's status alongside
+    /// whatever data came back. Unlike the typed helpers this never fails on a
+    /// non-zero status, because for the commands we are still mapping the
+    /// status is the result. Research use: the daemon does not call it.
+    pub fn raw_command(
+        &mut self,
+        command: u16,
+        value: u16,
+        data: &[u8],
+        capacity: u32,
+    ) -> Result<(u64, Vec<u8>)> {
+        let reply = self.command(command, value, data, capacity)?;
+        let status = proto::status(&reply);
+        let bytes = proto::data(&reply).unwrap_or_default();
+        Ok((status, bytes))
+    }
+
+    /// The untouched reply, for commands whose reply shape is not yet known.
+    /// Research use: lets a caller see a negative status or an unexpected
+    /// structure instead of having it flattened into a sentinel.
+    pub fn raw_reply(
+        &mut self,
+        command: u16,
+        value: u16,
+        data: &[u8],
+        capacity: u32,
+    ) -> Result<Value> {
+        self.command(command, value, data, capacity)
+    }
+
+    /// Arm an enrollment. Sends `EnrollMode` (3) as a version-2, value-0
+    /// command carrying `cmd_enroll_mode_in_v2_t`: flags(0), the macOS userID,
+    /// the 40-byte authData holding the 16-byte unlock token, and the 20-byte
+    /// device group. Returns the SEP status as signed, so the -3 that a missing
+    /// or wrong token produces is visible rather than flattened. 0 means armed.
+    pub fn enroll_begin(
+        &mut self,
+        user_id: u32,
+        token: &[u8],
+        device_group: &[u8],
+    ) -> Result<i64> {
+        let body = proto::enroll_init(user_id, token, device_group);
+        let reply = self.request(proto::command_payload_versioned(
+            proto::ENROLL_MODE,
+            2,
+            0,
+            &body,
+            0,
+        ))?;
+        Ok(proto::status_signed(&reply).unwrap_or(i64::MIN))
+    }
+
+    /// Advance to the next capture. `EnrollContinue` (14) carries no payload;
+    /// it is the bare "I consumed that image, give me the next" tick, sent once
+    /// after each accepted capture until the SEP reports the enrollment done.
+    pub fn enroll_continue(&mut self) -> Result<i64> {
+        let reply = self.command(proto::ENROLL_CONTINUE, 0, &[], 0)?;
+        Ok(proto::status_signed(&reply).unwrap_or(i64::MIN))
+    }
+
+    /// Read the host-side catacomb descriptor the save sequence needs. The
+    /// group state is the 24-byte component the v2 save commands take as input;
+    /// we hand back what the SEP reports so the save does not have to guess it.
+    pub fn catacomb_group_state(&mut self) -> Result<Vec<u8>> {
+        let (_, bytes) = self.raw_command(proto::GET_CATACOMB_GROUP_STATE, 0, &[], 2800)?;
+        Ok(bytes)
+    }
+
+    /// One component's three-phase catacomb save. `component` is the 24-byte
+    /// descriptor; `Complete` returns the finished **sealed blob**, which the
+    /// SEP produces itself and which the caller writes to the `.cat` file. The
+    /// seal is not reproduced on the host, only stored. NOTE: the 24-byte
+    /// descriptor layout is read from the SEP rather than reversed field by
+    /// field, so this path stays unverified until a real token lets it run.
+    pub fn save_catacomb_component(&mut self, component: &[u8]) -> Result<Vec<u8>> {
+        let prepare = self.command(proto::PREPARE_SAVE_CATACOMB, 0, component, 4)?;
+        ensure!(proto::is_ok(&prepare), "PrepareSaveCatacomb rejected: {:#x}", proto::status(&prepare) as u32);
+        let complete = self.command(proto::COMPLETE_SAVE_CATACOMB, 0, component, proto::OOL_MAX as u32)?;
+        let blob = proto::data(&complete)?;
+        let confirm = self.command(proto::CONFIRM_SAVE_CATACOMB, 0, component, 0)?;
+        ensure!(proto::is_ok(&confirm), "ConfirmSaveCatacomb rejected: {:#x}", proto::status(&confirm) as u32);
+        Ok(blob)
+    }
+
     pub fn start_presence(&mut self) -> Result<()> {
         let reply = self.command(proto::PRESENCE, 0, &[], 0)?;
         ensure!(proto::is_ok(&reply), "presence request rejected");

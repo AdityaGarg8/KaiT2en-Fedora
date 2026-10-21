@@ -12,17 +12,7 @@ access when needed.
 | `boot-macos` | Restarts into macOS once. Linux is the default again on the next boot |
 | `update-modules` | Updates the KAIT2EN checkout, then reinstalls the DKMS modules, rebuilds the patched AMDGPU driver on supported models and rebuilds the initramfs |
 | `update-apps` | Updates the KAIT2EN checkout, then reinstalls the KAIT2EN applications |
-
-## Boot macOS once
-
-```bash
-boot-macos
-```
-
-This looks up the macOS entry (`CoreServices\boot.efi`) in the EFI boot menu,
-sets it as `BootNext` with `efibootmgr` and restarts. `BootNext` applies to the
-next boot only. If the EFI boot menu has no macOS entry, the command stops with
-an error and does not restart.
+| `boot-macos` | reboot into macOS once |
 
 ## Incremental updates
 

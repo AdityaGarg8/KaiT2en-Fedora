@@ -145,6 +145,16 @@ module_param(probe_control, bool, 0400);
 MODULE_PARM_DESC(probe_control,
 	"Issue Apple's side-effect-free endpoint-0 control NOP (default: false)");
 
+static uint ool_endpoint = T2SEP_AKS_ENDPOINT;
+module_param(ool_endpoint, uint, 0400);
+MODULE_PARM_DESC(ool_endpoint,
+	"SEP endpoint number to register the OOL buffers for and route /dev/t2sep "
+	"exchanges to (default: 7, the AppleKeyStore endpoint). The credential "
+	"endpoint 'scrd' uses a different, discovery-assigned number; load with "
+	"discovery_window_ms first and read the endpoints sysfs attribute to find "
+	"it, then set this. The wire format for the chosen endpoint is built in "
+	"user space; the driver keeps the bytes opaque, exactly as for AKS.");
+
 static void t2sep_record_discovery(struct t2sep_device *sep,
 				   const struct t2sep_message *message);
 
@@ -377,8 +387,13 @@ static int t2sep_control(struct t2sep_device *sep, u8 opcode, u8 tag,
 	if (!IS_ALIGNED(dma, PAGE_SIZE) || dma >> T2SEP_DMA_BITS || size > U32_MAX)
 		return -ERANGE;
 
+	/*
+	 * The high byte of word[0] names the endpoint the OOL buffers are being
+	 * registered for. It is ool_endpoint, not necessarily AKS: the same
+	 * control dialogue registers buffers for the credential endpoint too.
+	 */
 	request.word[0] = T2SEP_CONTROL_ENDPOINT | (tag << 8) |
-		(opcode << 16) | (T2SEP_AKS_ENDPOINT << 24);
+		(opcode << 16) | ((ool_endpoint & 0xff) << 24);
 	request.word[1] = lower_32_bits(dma >> PAGE_SHIFT);
 	request.word[2] = size;
 
@@ -475,14 +490,15 @@ static int t2sep_register_ool(struct t2sep_device *sep)
 	if (ret) {
 		if (posted && ret != -EREMOTEIO) {
 			dev_err(&sep->pdev->dev,
-				"AKS input registration result is unknown: %d; retaining DMA memory until reboot\n",
+				"input registration result is unknown: %d; retaining DMA memory until reboot\n",
 				ret);
 			sep->ool_dma_retained = true;
 			__module_get(THIS_MODULE);
 			return 0;
 		}
 		dev_err(&sep->pdev->dev,
-			"failed to register AKS input buffer: %d\n", ret);
+			"failed to register input buffer for endpoint %u: %d\n",
+			ool_endpoint, ret);
 		goto err_clear_master;
 	}
 	sep->ool_in_registered = true;
@@ -503,7 +519,8 @@ static int t2sep_register_ool(struct t2sep_device *sep)
 	sep->ool_dma_retained = true;
 	__module_get(THIS_MODULE);
 	dev_info(&sep->pdev->dev,
-		 "registered 16 KiB AKS endpoint-7 input/output buffers\n");
+		 "registered 16 KiB input/output buffers for SEP endpoint %u\n",
+		 ool_endpoint);
 	return 0;
 
 err_clear_master:
@@ -566,10 +583,29 @@ static int t2sep_ool_exchange(struct t2sep_device *sep, u8 endpoint,
 	struct t2sep_message request = { };
 	struct t2sep_message reply;
 	unsigned int skipped = 0;
+	bool credential = endpoint != T2SEP_AKS_ENDPOINT;
 	int ret;
 
-	request.word[0] = endpoint | (operation << 8) | (1 << 16);
-	request.word[1] = request_length << 16;
+	/*
+	 * Two descriptor shapes, both recovered from AppleSEPIntelIOP::postMailbox.
+	 *
+	 * AKS (endpoint 7): word0 = endpoint | op<<8 | 1<<16, word1 = len<<16.
+	 *
+	 * Credential endpoint (10, scrd): a live dtrace of postMailbox/getMailbox
+	 * shows word0 = endpoint | 1<<8 | len<<16, word1 = 0. byte1 is a constant 1
+	 * and byte2 is the OOL request length; the command id is never in the
+	 * mailbox, it lives in the DRCS framing in the OOL input. The reply carries
+	 * the same shape, with byte2 holding the reply length (so <= 255 bytes), and
+	 * word1 is a sequence tag that is not the length. The command byte is not
+	 * echoed, so the reply is matched on the endpoint and the constant byte1.
+	 */
+	if (credential) {
+		request.word[0] = endpoint | (1 << 8) | (request_length << 16);
+		request.word[1] = 0;
+	} else {
+		request.word[0] = endpoint | (operation << 8) | (1 << 16);
+		request.word[1] = request_length << 16;
+	}
 
 	/* Publish the coherent request before notifying SEP through MMIO. */
 	dma_wmb();
@@ -582,17 +618,34 @@ static int t2sep_ool_exchange(struct t2sep_device *sep, u8 endpoint,
 					    T2SEP_CONTROL_TIMEOUT);
 		if (ret)
 			return ret;
-		if ((reply.word[0] & 0xff) == endpoint &&
-		    ((reply.word[0] >> 8) & 0x7f) == operation &&
-		    ((reply.word[0] >> 16) & 0xff) == 1)
+		if (credential) {
+			if ((reply.word[0] & 0xff) == endpoint &&
+			    ((reply.word[0] >> 8) & 0xff) == 1)
+				break;
+		} else if ((reply.word[0] & 0xff) == endpoint &&
+			   ((reply.word[0] >> 8) & 0x7f) == operation &&
+			   ((reply.word[0] >> 16) & 0xff) == 1) {
 			break;
+		}
 		if (++skipped == T2SEP_MAX_SKIPPED)
 			return -EOVERFLOW;
 	}
 	/* SEP completed the descriptor before publishing the OOL response. */
 	dma_rmb();
 
-	*reply_length = reply.word[1] >> 16;
+	if (credential)
+		dev_info(&sep->pdev->dev,
+			 "cred reply: w0=%#010x w1=%#010x w2=%#010x w3=%#010x ool_out=%16ph\n",
+			 reply.word[0], reply.word[1], reply.word[2], reply.word[3],
+			 sep->ool_out);
+
+	/*
+	 * AKS carries the reply length in word1 bits 16+. The credential reply puts
+	 * it in word0 byte2 (getMailbox capture: len 21 and 176 landed there, word1
+	 * is a sequence tag). A command with no payload replies with byte2 == 0.
+	 */
+	*reply_length = credential ? ((reply.word[0] >> 16) & 0xff)
+				   : (reply.word[1] >> 16);
 	return 0;
 }
 
@@ -962,8 +1015,12 @@ static int t2sep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		if (ret)
 			goto err_remove_group;
 		sep->miscdev_registered = true;
-		if (probe_capabilities && sep->ool_in_registered &&
-		    sep->ool_out_registered) {
+		if (probe_capabilities && ool_endpoint != T2SEP_AKS_ENDPOINT) {
+			dev_warn(&pdev->dev,
+				 "probe_capabilities is an AKS (endpoint 7) query; ignoring it for endpoint %u\n",
+				 ool_endpoint);
+		} else if (probe_capabilities && sep->ool_in_registered &&
+			   sep->ool_out_registered) {
 			ret = t2sep_probe_capabilities(sep);
 			if (ret)
 				dev_warn(&pdev->dev,
