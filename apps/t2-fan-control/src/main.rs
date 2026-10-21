@@ -25,9 +25,10 @@ use gtk4::{
     cairo,
     gio,
     glib,
-    prelude::*, Align, Application, ApplicationWindow, Box as GtkBox, CheckButton, ComboBoxText,
-    CssProvider, DrawingArea, Entry, EventControllerFocus, EventControllerMotion, Expander,
-    GestureDrag, Grid, Label, LinkButton, Orientation, Popover, PositionType, Switch, gdk,
+    prelude::*, Align, Application, ApplicationWindow, Box as GtkBox, CheckButton, CssProvider,
+    DrawingArea, DropDown, Entry, EventControllerFocus, EventControllerMotion, Expander,
+    GestureDrag, Grid, Label, LinkButton, Orientation, Popover, PositionType, StringList, Switch,
+    gdk,
 };
 use ipc::{DaemonState, Request};
 use signal_hook::consts::signal::SIGHUP;
@@ -144,7 +145,7 @@ struct UiRefs {
     any_sensor_focus: EventControllerFocus,
     system_cooling_time: Entry,
     system_cooling_focus: EventControllerFocus,
-    curve_sensor_combo: ComboBoxText,
+    curve_sensor_dropdown: DropDown,
     sensor_choice_keys: RefCell<Vec<String>>,
     curve_title: Label,
     curve_legend: Label,
@@ -701,7 +702,7 @@ fn build_ui(app: &Application) {
     let curve_sensor_row = GtkBox::new(Orientation::Horizontal, 8);
     curve_sensor_row.set_halign(Align::End);
     curve_sensor_row.append(&Label::new(Some("Optional curve sensor")));
-    curve_sensor_row.append(&ui.curve_sensor_combo);
+    curve_sensor_row.append(&ui.curve_sensor_dropdown);
 
     let advanced_content = GtkBox::new(Orientation::Vertical, 6);
     advanced_content.append(&cooling_time_row);
@@ -718,7 +719,7 @@ fn build_ui(app: &Application) {
         "Optionally force both fans to 100% when any positive temperature reaches the selected threshold."
     );
     install_delayed_tooltip(&ui.any_sensor_temp, "Any-sensor protection threshold from 0 to 100 C.");
-    install_delayed_tooltip(&ui.curve_sensor_combo,
+    install_delayed_tooltip(&ui.curve_sensor_dropdown,
         "Optionally add one board sensor to the fixed CPU/dGPU curve inputs. The hottest of the available inputs controls the curve."
     );
     root.append(&dynamic_panel(&ui.curve_title, &ui.curve_area, &ui.curve_legend));
@@ -782,9 +783,11 @@ fn build_ui(app: &Application) {
     {
         let model = model.clone();
         let ui_refs = ui.clone();
-        ui.curve_sensor_combo.connect_changed(move |combo| {
+        ui.curve_sensor_dropdown.connect_selected_notify(move |dropdown| {
             if ui_refs.syncing.get() { return; }
-            let key = combo.active_id().and_then(|id| (id.as_str() != "NONE").then(|| id.to_string()));
+            // Position 0 is "None", the sensors follow in sensor_choice_keys order
+            let key = dropdown.selected().checked_sub(1)
+                .and_then(|index| ui_refs.sensor_choice_keys.borrow().get(index as usize).cloned());
             model.borrow_mut().update_curve_sensor(key);
             sync_ui(&model.borrow(), &ui_refs);
         });
@@ -866,7 +869,7 @@ fn build_widgets() -> UiRefs {
     any_sensor_temp.add_controller(any_sensor_focus.clone());
     let system_cooling_focus = EventControllerFocus::new();
     system_cooling_time.add_controller(system_cooling_focus.clone());
-    let curve_sensor_combo = ComboBoxText::new();
+    let curve_sensor_dropdown = DropDown::new(Some(StringList::new(&["None"])), gtk4::Expression::NONE);
 
     UiRefs {
         status: make_value(),
@@ -887,7 +890,7 @@ fn build_widgets() -> UiRefs {
         any_sensor_focus,
         system_cooling_time,
         system_cooling_focus,
-        curve_sensor_combo,
+        curve_sensor_dropdown,
         sensor_choice_keys: RefCell::new(Vec::new()),
         curve_title: Label::new(None),
         curve_legend: Label::new(None),
@@ -939,8 +942,8 @@ fn connect_drawings(
         gesture.connect_drag_begin(move |_gesture, x, y| {
             let model = model.borrow();
             let curve = &model.config.custom_curve;
-            let width = area.allocated_width() as f64;
-            let height = area.allocated_height() as f64;
+            let width = area.width() as f64;
+            let height = area.height() as f64;
             let plot = plot_rect(width, height);
             let target = curve_hit_target(curve, model.config.soak_temp_c, plot, x, y)
                 .filter(|_| model.config.automatic_control_enabled);
@@ -975,8 +978,8 @@ fn connect_drawings(
             {
                 let mut model = model.borrow_mut();
                 match target {
-                    CurveDragTarget::Point(index) => model.update_curve_point(index, x, y, area.allocated_width() as f64, area.allocated_height() as f64),
-                    CurveDragTarget::SoakWall => model.update_soak(x, area.allocated_width() as f64, area.allocated_height() as f64),
+                    CurveDragTarget::Point(index) => model.update_curve_point(index, x, y, area.width() as f64, area.height() as f64),
+                    CurveDragTarget::SoakWall => model.update_soak(x, area.width() as f64, area.height() as f64),
                 }
                 sync_ui(&model, &ui);
             }
@@ -1066,7 +1069,7 @@ fn install_curve_hover(
                 return;
             }
             let model = model.borrow();
-            let plot = plot_rect(area.allocated_width() as f64, area.allocated_height() as f64);
+            let plot = plot_rect(area.width() as f64, area.height() as f64);
             let target = curve_hit_target(&model.config.custom_curve, model.config.soak_temp_c, plot, x, y);
             area.set_cursor_from_name(match target {
                 Some(CurveDragTarget::Point(_)) => Some("grab"),
@@ -1342,16 +1345,16 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
     }
     let choice_keys = model.sensor_choices.iter().map(|sensor| sensor.key.clone()).collect::<Vec<_>>();
     if *ui.sensor_choice_keys.borrow() != choice_keys {
-        ui.curve_sensor_combo.remove_all();
-        ui.curve_sensor_combo.append(Some("NONE"), "None");
-        for sensor in &model.sensor_choices {
-            ui.curve_sensor_combo.append(Some(&sensor.key), &sensor.name);
-        }
+        let names = std::iter::once("None")
+            .chain(model.sensor_choices.iter().map(|sensor| sensor.name.as_str()))
+            .collect::<Vec<_>>();
+        ui.curve_sensor_dropdown.set_model(Some(&StringList::new(&names)));
         *ui.sensor_choice_keys.borrow_mut() = choice_keys;
     }
-    ui.curve_sensor_combo.set_active_id(Some(
-        model.config.curve_sensor_key.as_deref().unwrap_or("NONE")
-    ));
+    let selected = model.config.curve_sensor_key.as_deref()
+        .and_then(|key| ui.sensor_choice_keys.borrow().iter().position(|choice| choice == key))
+        .map_or(0, |index| index as u32 + 1);
+    ui.curve_sensor_dropdown.set_selected(selected);
     // Percent only means something against the custom curve
     let fan_average = if model.config.automatic_control_enabled {
         model.average_fan_percent().map(|value| format!("{value}% average"))
@@ -1887,7 +1890,7 @@ fn draw_label(cr: &cairo::Context, x: f64, y: f64, text: &str, _size: f64, _alph
 
 fn install_css() -> CssProvider {
     let provider = CssProvider::new();
-    provider.load_from_data(&build_css(current_palette()));
+    provider.load_from_string(&build_css(current_palette()));
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
@@ -2076,7 +2079,7 @@ fn watch_theme_changes(provider: &CssProvider, ui: &UiRefs) {
     let temp = ui.temperature_graph.clone();
     let fan = ui.fan_graph.clone();
     style_manager.connect_dark_notify(move |_| {
-        provider_dark.load_from_data(&build_css(current_palette()));
+        provider_dark.load_from_string(&build_css(current_palette()));
         curve.queue_draw();
         temp.queue_draw();
         fan.queue_draw();

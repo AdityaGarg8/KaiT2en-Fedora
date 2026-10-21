@@ -773,7 +773,7 @@ fn draw_label(cr: &cairo::Context, x: f64, y: f64, text: &str) {
 
 fn install_css() -> CssProvider {
     let provider = CssProvider::new();
-    provider.load_from_data(&build_css(current_palette()));
+    provider.load_from_string(&build_css(current_palette()));
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(&display, &provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
     }
@@ -839,7 +839,7 @@ fn watch_theme_changes(provider: &CssProvider, ui: &Rc<UiRefs>) {
     let provider = provider.clone();
     let ui = ui.clone();
     StyleManager::default().connect_dark_notify(move |_| {
-        provider.load_from_data(&build_css(current_palette()));
+        provider.load_from_string(&build_css(current_palette()));
         ui.power_graph.queue_draw();
         ui.throttle_graph.queue_draw();
         ui.limit_graph.queue_draw();

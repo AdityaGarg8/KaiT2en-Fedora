@@ -123,14 +123,14 @@ fn palette_css(dark: bool) -> String {
 fn install_css() {
     let provider = gtk::CssProvider::new();
     let style = adw::StyleManager::default();
-    provider.load_from_data(&palette_css(style.is_dark()));
+    provider.load_from_string(&palette_css(style.is_dark()));
     gtk::style_context_add_provider_for_display(
         &gtk::gdk::Display::default().expect("display"),
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
     style.connect_dark_notify(move |manager| {
-        provider.load_from_data(&palette_css(manager.is_dark()));
+        provider.load_from_string(&palette_css(manager.is_dark()));
     });
 }
 

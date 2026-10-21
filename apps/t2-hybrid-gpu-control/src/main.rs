@@ -54,7 +54,7 @@ fn palette_css(dark: bool) -> String {
 fn install_palette() {
     let provider = gtk::CssProvider::new();
     let style = adw::StyleManager::default();
-    provider.load_from_data(&palette_css(style.is_dark()));
+    provider.load_from_string(&palette_css(style.is_dark()));
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
             &display,
@@ -63,7 +63,7 @@ fn install_palette() {
         );
     }
     style.connect_dark_notify(move |manager| {
-        provider.load_from_data(&palette_css(manager.is_dark()));
+        provider.load_from_string(&palette_css(manager.is_dark()));
     });
 }
 
