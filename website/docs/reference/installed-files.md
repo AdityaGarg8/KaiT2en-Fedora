@@ -24,6 +24,23 @@ checkout with an unexpected Git remote. Its persistent files are:
 ~/.local/state/kait2en/install.log
 ```
 
+## Multicall commands
+
+`install.sh` installs a helper script and links the short commands to it. The
+command name selects the action, see [Multicall commands](../post-install/multicall-commands.md).
+
+```text
+/usr/local/bin/kait2en-multicall
+/usr/local/bin/edit-grub          -> kait2en-multicall
+/usr/local/bin/update-grub        -> kait2en-multicall
+/usr/local/bin/boot-macos         -> kait2en-multicall
+/usr/local/bin/update-modules     -> kait2en-multicall
+/usr/local/bin/update-apps        -> kait2en-multicall
+```
+
+`boot-macos` writes the EFI `BootNext` variable and `update-modules` and
+`update-apps` reset the checkout at `/usr/local/src/KaiT2en-Fedora`.
+
 ## Kernel modules
 
 The installer copies each DKMS source package to `/usr/src/<name>-<version>/`,

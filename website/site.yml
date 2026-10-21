@@ -119,6 +119,7 @@ documentation:
         - {file: post-install/hardware-video-encoding.md}
         - {file: post-install/touch-id.md, title: Touch ID}
         - {file: post-install/updating.md, title: Updating}
+        - {file: post-install/multicall-commands.md, title: Multicall commands}
     - title: Reference
       pages:
         - {file: reference/installed-files.md}
