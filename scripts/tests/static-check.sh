@@ -286,4 +286,5 @@ bash scripts/tests/release-bootstrap.sh
 bash scripts/tests/terminal-launcher.sh
 bash scripts/tests/iso-download.sh
 bash scripts/tests/edition-catalog.sh
+bash scripts/tests/cargo-lock-alignment.sh
 printf 'Installer static checks passed.\n'
