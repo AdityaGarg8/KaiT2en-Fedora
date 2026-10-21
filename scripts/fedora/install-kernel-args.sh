@@ -42,27 +42,7 @@ repair_empty_grub_cmdline() {
 	info "restored GRUB_CMDLINE_LINUX from the installed kernel command line"
 }
 
-REMOVE_ARGS=(
-	"'acpi_osi=Windows 2012'"
-	"acpi_osi='Windows 2012'"
-	acpi_osi
-	intel_iommu
-	iommu
-	pm_async
-	brcmfmac.p2pon
-	pci
-	pcie_ports
-	pcie_aspm
-	pcie_aspm.policy
-	nvme_core.default_ps_max_latency_us
-	apple_gmux.force_igd
-	t2gmux.force_igd
-	amdgpu.aspm
-	i915.enable_guc
-	mem_sleep_default
-	initcall_blacklist
-	module_blacklist
-)
+REMOVE_ARGS=()
 
 ADD_ARGS=(
 	"amdgpu.aspm=1"
@@ -74,6 +54,7 @@ ADD_ARGS=(
 	"pcie_aspm=force"
 	"pcie_aspm.policy=powersave"
 	"pcie_ports=compat"
+	"pci=noaer"
 	"mem_sleep_default=deep"
 )
 
