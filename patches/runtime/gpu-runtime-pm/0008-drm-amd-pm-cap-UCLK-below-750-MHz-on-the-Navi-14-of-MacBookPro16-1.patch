@@ -5,20 +5,17 @@ The Radeon Pro 5300M and 5500M of the MacBookPro16,1 (Navi 14, revisions
 0x40 and 0x43) drop off the PCIe bus under load and at shutdown, which
 ends in a CPU machine check. Keeping UCLK off its top level of 750 MHz
 avoids both. The macOS driver sets a hard UCLK maximum of 740 MHz on
-these revisions right after it enabled all SMU features, which leaves
-736 MHz as the highest level.
+these revisions, which leaves 736 MHz as the highest level.
 
-Set the same hard maximum right after EnableAllSmuFeatures, so UCLK
-cannot reach 750 MHz between the feature enable and the first display
-config change. This also covers every resume. Keep clamping the maximum
-the driver sends on display config changes and the sustainable UCLK used
-when memory clock switching is disabled to 740 MHz on these revisions.
+Clamp the UCLK hard maximum the driver sends on display config changes
+and the sustainable UCLK used when memory clock switching is disabled
+to 740 MHz on these revisions.
 
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
 --- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
 +++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
-@@ -1582,6 +1582,67 @@
+@@ -1582,6 +1582,40 @@
  	return ret;
  }
  
@@ -28,43 +25,16 @@ Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 + * level of 750 MHz. The macOS driver sets a hard UCLK maximum of 740 MHz on
 + * these revisions, which leaves 736 MHz as the highest level.
 + */
-+static bool navi10_apple_uclk_capped(struct smu_context *smu)
++static uint32_t navi10_apple_uclk_max(struct smu_context *smu, uint32_t freq)
 +{
 +	struct amdgpu_device *adev = smu->adev;
 +
-+	return amdgpu_ip_version(adev, MP1_HWIP, 0) == IP_VERSION(11, 0, 5) &&
-+	       adev->pdev->subsystem_vendor == PCI_VENDOR_ID_APPLE &&
-+	       (adev->pdev->revision == 0x40 || adev->pdev->revision == 0x43);
-+}
-+
-+static uint32_t navi10_apple_uclk_max(struct smu_context *smu, uint32_t freq)
-+{
-+	if (!navi10_apple_uclk_capped(smu))
++	if (amdgpu_ip_version(adev, MP1_HWIP, 0) != IP_VERSION(11, 0, 5) ||
++	    adev->pdev->subsystem_vendor != PCI_VENDOR_ID_APPLE ||
++	    (adev->pdev->revision != 0x40 && adev->pdev->revision != 0x43))
 +		return freq;
 +
 +	return min(freq, 740U);
-+}
-+
-+/*
-+ * The macOS driver sets the hard UCLK maximum right after it enabled all SMU
-+ * features, before anything else touches the clocks. Do the same on every
-+ * enable, which includes the resume from runtime suspend and from S3.
-+ */
-+static int navi10_system_features_control(struct smu_context *smu, bool en)
-+{
-+	uint32_t max_freq;
-+	int ret;
-+
-+	ret = smu_v11_0_system_features_control(smu, en);
-+	if (ret || !en || !navi10_apple_uclk_capped(smu))
-+		return ret;
-+
-+	ret = smu_v11_0_get_dpm_ultimate_freq(smu, SMU_UCLK, NULL, &max_freq);
-+	if (ret)
-+		return ret;
-+
-+	return smu_v11_0_set_hard_freq_limited_range(smu, SMU_UCLK, 0,
-+						     navi10_apple_uclk_max(smu, max_freq));
 +}
 +
 +static int navi10_init_max_sustainable_clocks(struct smu_context *smu)
@@ -86,7 +56,7 @@ Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
  static int navi10_pre_display_config_changed(struct smu_context *smu)
  {
  	int ret = 0;
-@@ -1595,6 +1656,7 @@
+@@ -1595,6 +1629,7 @@
  		ret = smu_v11_0_get_dpm_ultimate_freq(smu, SMU_UCLK, NULL, &max_freq);
  		if (ret)
  			return ret;
@@ -94,16 +64,7 @@ Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
  		ret = smu_v11_0_set_hard_freq_limited_range(smu, SMU_UCLK, 0, max_freq);
  		if (ret)
  			return ret;
-@@ -3317,7 +3379,7 @@
- 	.set_driver_table_location = smu_v11_0_set_driver_table_location,
- 	.set_tool_table_location = smu_v11_0_set_tool_table_location,
- 	.notify_memory_pool_location = smu_v11_0_notify_memory_pool_location,
--	.system_features_control = smu_v11_0_system_features_control,
-+	.system_features_control = navi10_system_features_control,
- 	.init_display_count = smu_v11_0_init_display_count,
- 	.set_allowed_mask = smu_v11_0_set_allowed_mask,
- 	.get_enabled_mask = smu_cmn_get_enabled_mask,
-@@ -3325,7 +3387,7 @@
+@@ -3325,7 +3360,7 @@
  	.disable_all_features_with_exception = smu_cmn_disable_all_features_with_exception,
  	.notify_display_change = smu_v11_0_notify_display_change,
  	.set_power_limit = smu_v11_0_set_power_limit,
