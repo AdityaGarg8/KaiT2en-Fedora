@@ -1,10 +1,12 @@
-# Streaming Screen Content using Sidecar
+# Streaming Using Sidecar
 
 With the T2's Sidecar encoder, the desktop can be streamed to an Android tablet,
-a phone or another computer. [Sunshine](https://github.com/LizardByte/Sunshine)
+iPad, a phone or another computer. [Sunshine](https://github.com/LizardByte/Sunshine)
 runs on the Mac and encodes with the T2, and
 [Moonlight](https://moonlight-stream.org) shows the stream on the other device
-and sends touch, mouse and keyboard input back.
+and sends touch, mouse and keyboard input back. Thanks to the T2 being an ARM
+processor, this works significantly faster than on the x86 CPU while saving plenty
+of power.
 
 The encoder is described in
 [Hardware video encoding](hardware-video-encoding.md#sidecar-encoder).
@@ -59,15 +61,16 @@ and pair Moonlight with the PIN it shows.
 
 ## Moonlight settings
 
-- Resolution 1080p at 60 frames per second. At 2560x1600 the encoder manages
-  about 50 frames per second, Moonlight then reports a slow connection and the
-  picture stutters.
+- Resolution 1080p at 60 frames per second should run well on most modern WiFi
+  setups. While testing, we managed around 50 to 60FPS in 2560*1600 using WiFi6
+  and a rather modern Android tablet with Snapdragon CPU.
 - Video codec H.264 or automatic.
 
 ## Limitations
 
 - The stream mirrors the built-in display. A separate virtual display is not
-  available yet, but planned.
+  available yet, but planned (VDD).
 - Sunshine logs "Encoder did not produce IDR frame when requested" while
   streaming. The encoder returns frames asynchronously and Sunshine checks the
-  wrong packet. Keyframes on request arrive on the requested frame.
+  wrong packet. Keyframes on request arrive on the requested frame. Seems to be
+  a cosmetic issue only.
