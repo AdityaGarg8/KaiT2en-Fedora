@@ -182,8 +182,8 @@ audio behavior and diagnostics.
 | --- | --- |
 | `/etc/systemd/system/kait2en-suspend.service` | Calls the suspend helper before `sleep.target` and again after resume |
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
-| `/etc/systemd/system/kait2en-macos-mount.service` | Mounts the readable macOS volumes read-only under `/media` at boot |
-| `/usr/local/libexec/kait2en/kait2en-macos-mount` | Finds the readable volumes in the internal APFS container and mounts them by role |
+| `/etc/systemd/system/kait2en-macos-mount.service` | Mounts the readable macOS volumes read-only under `/media/macOS` at boot |
+| `/usr/local/libexec/kait2en/kait2en-macos-mount` | Finds the readable volumes in the internal APFS container and mounts them as subdirectories by role |
 | `/etc/systemd/system/t2-services-suspend.service` | Runs feature sleep/resume hooks around sleep |
 | `/usr/local/libexec/t2-services/t2-ncm-sleep` | Runs installed feature hooks before sleep and after resume |
 | `/usr/local/libexec/t2-services/sleep.d/t2-ave` | Closes/reopens sessions only when the AVE daemon is running |
@@ -230,15 +230,16 @@ and modified managed tables are left unchanged and reported as conflicts.
 
 `kait2en-macos-mount.service` is enabled on every installation. At boot the
 helper loads `apfs` and probes each volume of every internal APFS partition
-read-only in turn. Every readable volume is mounted under `/media`, named by
-the role detected from its contents:
+read-only in turn. Every readable volume is mounted as a subdirectory of the
+single `/media/macOS` directory, named by the role detected from its contents,
+so the whole macOS install is browsed from one place:
 
 | Mount point | Volume | Detected by |
 | --- | --- | --- |
-| `/media/macOS` | System | `System/Library/CoreServices/SystemVersion.plist` |
-| `/media/macOS-Preboot` | Preboot | `*/restore/BuildManifest.plist` or `*/cryptex1` |
-| `/media/macOS-iSCPreboot` | iSCPreboot | `nvram.plist` with a `Firmware/` directory |
-| `/media/macOS-Recovery` | Recovery | signed boot objects `*/*.im4m` |
+| `/media/macOS/System` | System | `System/Library/CoreServices/SystemVersion.plist` |
+| `/media/macOS/Preboot` | Preboot | `*/restore/BuildManifest.plist` or `*/cryptex1` |
+| `/media/macOS/iSCPreboot` | iSCPreboot | `nvram.plist` with a `Firmware/` directory |
+| `/media/macOS/Recovery` | Recovery | signed boot objects `*/*.im4m` |
 
 The probe runs on every boot because the volume order differs between Macs and
 macOS versions. The macOS Data volume is encrypted and stays unmounted, and the

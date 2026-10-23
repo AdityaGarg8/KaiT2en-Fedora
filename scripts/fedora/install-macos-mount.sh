@@ -10,27 +10,23 @@ require_command systemctl install
 # The apfs module from third-party/linux-apfs-rw mounts one volume of the
 # container at a time and the volume order differs between Macs and macOS
 # versions. The helper therefore probes every volume of each internal APFS
-# container on every boot and mounts the readable ones read-only under
-# /media, named by the role it detects from the contents. The encrypted Data
-# volume is skipped.
+# container on every boot and mounts the readable ones read-only as
+# subdirectories of a single /media/macOS directory, named by the role it
+# detects from the contents, so the whole macOS install is browsed from one
+# place. The encrypted Data volume is skipped.
 info "installing Kait2en macOS volume mount"
 install -d -o root -g root -m 0755 /usr/local/libexec/kait2en
 tee /usr/local/libexec/kait2en/kait2en-macos-mount >/dev/null <<'EOF'
 #!/bin/sh
 
-# Mount points by detected role. The System volume keeps the plain /media/macOS
-# name because it is the one users browse.
-SYSTEM_TARGET=/media/macOS
-PREBOOT_TARGET=/media/macOS-Preboot
-ISCPREBOOT_TARGET=/media/macOS-iSCPreboot
-RECOVERY_TARGET=/media/macOS-Recovery
-
-ALL_TARGETS="$SYSTEM_TARGET $PREBOOT_TARGET $ISCPREBOOT_TARGET $RECOVERY_TARGET"
+# A single parent directory holds every readable volume as a subdirectory.
+# The parent itself is a plain directory on the root filesystem, not a mount.
+PARENT=/media/macOS
 
 case "$1" in
 stop)
-	for t in $ALL_TARGETS; do
-		mountpoint -q "$t" && umount "$t"
+	for t in "$PARENT"/*; do
+		[ -d "$t" ] && mountpoint -q "$t" && umount "$t"
 	done
 	exit 0
 	;;
@@ -38,32 +34,25 @@ esac
 
 modprobe apfs || exit 1
 
-# Print the role of the volume mounted read-only at $1, or nothing.
+# Print the role of the volume mounted read-only at $1, or nothing. The role is
+# also the subdirectory name under $PARENT.
 detect_role() {
 	m=$1
 	if [ -f "$m/System/Library/CoreServices/SystemVersion.plist" ]; then
-		echo system
+		echo System
 	elif [ -f "$m/nvram.plist" ] && [ -d "$m/Firmware" ]; then
-		echo iscpreboot
+		echo iSCPreboot
 	elif ls "$m"/*/restore/BuildManifest.plist >/dev/null 2>&1 ||
 		ls -d "$m"/*/cryptex1 >/dev/null 2>&1; then
-		echo preboot
+		echo Preboot
 	elif ls "$m"/*/*.im4m >/dev/null 2>&1; then
-		echo recovery
+		echo Recovery
 	fi
-}
-
-target_for_role() {
-	case $1 in
-	system) echo "$SYSTEM_TARGET" ;;
-	preboot) echo "$PREBOOT_TARGET" ;;
-	iscpreboot) echo "$ISCPREBOOT_TARGET" ;;
-	recovery) echo "$RECOVERY_TARGET" ;;
-	esac
 }
 
 probe=$(mktemp -d /run/kait2en-macos-mount.XXXXXX) || exit 1
 mounted_any=0
+mkdir -p "$PARENT"
 
 # Internal APFS partitions only. External disks are left to the file manager,
 # and loop devices (mounted dmgs) are skipped so manual experiments are not
@@ -75,10 +64,9 @@ for dev in $(lsblk -lnpo PATH,FSTYPE,RM,TYPE |
 		if mount -t apfs -o ro,vol="$vol" "$dev" "$probe" 2>/dev/null; then
 			role=$(detect_role "$probe")
 			umount "$probe"
-			target=$(target_for_role "$role")
-			if [ -n "$target" ] && ! mountpoint -q "$target"; then
-				mkdir -p "$target"
-				if mount -t apfs -o ro,vol="$vol" "$dev" "$target"; then
+			if [ -n "$role" ] && ! mountpoint -q "$PARENT/$role"; then
+				mkdir -p "$PARENT/$role"
+				if mount -t apfs -o ro,vol="$vol" "$dev" "$PARENT/$role"; then
 					mounted_any=1
 				fi
 			fi
