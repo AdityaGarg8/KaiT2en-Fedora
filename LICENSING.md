@@ -38,6 +38,9 @@ requirement and adds no restriction beyond section 7(b).
 
 - Vendored third-party code (e.g. `t2-services/t2-journal/libs/macos-unifiedlogs/`,
   `third-party/hex2hcd/`) keeps its upstream license.
+- `third-party/linux-apfs-rw/` is GPL-2.0-only. Its `lzfse/` files are
+  BSD-3-Clause, copyright Apple Inc., and `libzbitmap.*` is
+  GPL-2.0-or-later OR MIT. The notices stay in the file headers.
 - `apps/t2-touchbar/src/display.rs` derives its low-level DRM setup from
   tiny-dfr. Its MIT notice is preserved in
   `apps/t2-touchbar/THIRD-PARTY-NOTICES.md`; the combined KAIT2EN program is

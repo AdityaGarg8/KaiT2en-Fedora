@@ -66,6 +66,7 @@ kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 | `t2thunderbolt` | `t2thunderbolt` | Thunderbolt power-management ordering and T2 PCI quirks |
 | `t2smp` | `t2smp` | Defers secondary CPU hotplug to avoid firmware-sensitive resume delays |
 | `t2sbs` | `t2sbs` | Smart Battery driver that refreshes the full charge capacity and reports the charge relative to it, replaces `sbs` |
+| `linux-apfs-rw` | `apfs` | Read-only access to the macOS APFS container, vendored from upstream |
 
 The installer also writes
 `/etc/kernel/install.d/39-kait2en-dkms-cleanup.install`. The hook removes stale
@@ -181,6 +182,8 @@ audio behavior and diagnostics.
 | --- | --- |
 | `/etc/systemd/system/kait2en-suspend.service` | Calls the suspend helper before `sleep.target` and again after resume |
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
+| `/etc/systemd/system/kait2en-macos-mount.service` | Mounts the readable macOS volumes read-only under `/media` at boot |
+| `/usr/local/libexec/kait2en/kait2en-macos-mount` | Finds the readable volumes in the internal APFS container and mounts them by role |
 | `/etc/systemd/system/t2-services-suspend.service` | Runs feature sleep/resume hooks around sleep |
 | `/usr/local/libexec/t2-services/t2-ncm-sleep` | Runs installed feature hooks before sleep and after resume |
 | `/usr/local/libexec/t2-services/sleep.d/t2-ave` | Closes/reopens sessions only when the AVE daemon is running |
@@ -224,6 +227,22 @@ The backup contains every managed file that existed before deployment and a
 manifest. KAIT2EN only replaces or removes an ACPI table when its ownership
 marker contains the table's current SHA-256 checksum. Existing unmarked tables
 and modified managed tables are left unchanged and reported as conflicts.
+
+`kait2en-macos-mount.service` is enabled on every installation. At boot the
+helper loads `apfs` and probes each volume of every internal APFS partition
+read-only in turn. Every readable volume is mounted under `/media`, named by
+the role detected from its contents:
+
+| Mount point | Volume | Detected by |
+| --- | --- | --- |
+| `/media/macOS` | System | `System/Library/CoreServices/SystemVersion.plist` |
+| `/media/macOS-Preboot` | Preboot | `*/restore/BuildManifest.plist` or `*/cryptex1` |
+| `/media/macOS-iSCPreboot` | iSCPreboot | `nvram.plist` with a `Firmware/` directory |
+| `/media/macOS-Recovery` | Recovery | signed boot objects `*/*.im4m` |
+
+The probe runs on every boot because the volume order differs between Macs and
+macOS versions. The macOS Data volume is encrypted and stays unmounted, and the
+VM volume is left out.
 
 ## Apple firmware from the installer USB drive
 

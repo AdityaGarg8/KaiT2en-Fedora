@@ -65,6 +65,7 @@ STEPS=(
 	install-dependencies.sh
 	install-kernel-args.sh
 	install-dkms-modules.sh
+	install-macos-mount.sh
 	install-gpu-runtime-pm.sh
 	install-alsa-ucm.sh
 	install-dsp.sh
