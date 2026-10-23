@@ -329,6 +329,21 @@ items:
       Usable today through the t2-ave HandBrake build https://github.com/deqrocks/HandBrake
       or ffmpeg.
 
+  - id: t2-sidecar-encode
+    title: "Low-latency video encoding (T2 Sidecar encoder)"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2bce_sidecar
+    authors:
+      - deqrocks
+    link: post-install/sidecar.md
+    updated: "2026-10-23"
+    notes: >-
+      Exposes the encoder the T2 offers macOS for Sidecar as a V4L2 H.264/HEVC
+      encoder. Usable today through ffmpeg and the t2-sidecar Sunshine build
+      https://github.com/deqrocks/Sunshine for streaming to Moonlight.
+
   - id: touch-id
     title: "Touch ID login"
     state: available

@@ -1,9 +1,18 @@
 # Hardware video encoding
 
 The T2 contains Apple's video encoder, the AVE. KAIT2EN exposes it to Linux
-as a standard V4L2 memory-to-memory encoder, so ffmpeg, HandBrake and anything
-else that speaks V4L2 can hand it raw frames and receive HEVC. The Intel and
-AMD GPUs keep doing the decoding; the T2 only encodes.
+twice, as two standard V4L2 memory-to-memory encoders, so ffmpeg, HandBrake and
+anything else that speaks V4L2 can hand it raw frames and receive compressed
+video. The Intel and AMD GPUs keep doing the decoding; the T2 only encodes.
+
+| Device name | Path on the T2 | Output | Made for |
+| --- | --- | --- | --- |
+| `apple-ave-enc` | AVE bridge, like macOS VideoToolbox | HEVC, 8 and 10 bit | Transcoding files |
+| `t2-sidecar` | The low-latency encoder macOS uses for Sidecar | H.264 and HEVC, 8 bit | Streaming the desktop, see [Sidecar](sidecar.md) |
+
+`v4l2-ctl --list-devices` shows which `/dev/video` node each one got.
+
+## AVE encoder
 
 - HEVC (H.265) only. There is no H.264 output.
 - Main profile from 8-bit `NV12` input, Main 10 from `P010` input.
@@ -11,7 +20,7 @@ AMD GPUs keep doing the decoding; the T2 only encodes.
 - One encode at a time. A second session is refused with `EBUSY` until the
   first has finished.
 
-## ffmpeg
+### ffmpeg
 
 Fedora's `ffmpeg-free` already ships the V4L2 encoder wrapper. The encoder
 expects `NV12` frames, so tell ffmpeg to convert:
@@ -27,7 +36,7 @@ with `Encoder requires nv12 pixel format`.
 Fedora's ffmpeg does not know `P010` on V4L2 devices, so 10-bit output is
 not available from the command line. Use the HandBrake build for Main 10.
 
-## HandBrake with T2 AVE Support
+### HandBrake with T2 AVE Support
 
 The `t2-ave` branch of [our HandBrake fork](https://github.com/deqrocks/HandBrake)
 adds the encoder as **H.265 (Apple T2 AVE)** and teaches its bundled ffmpeg
@@ -41,3 +50,26 @@ git clone --branch t2-ave https://github.com/deqrocks/HandBrake.git
 cd HandBrake && ./configure --launch-jobs="$(nproc)" --launch
 sudo make -C build install
 ```
+
+## Sidecar encoder
+
+The T2 offers this encoder to macOS for Sidecar. It only exists while the
+`kait2en-t2-remote` service holds its connection to the T2. The T2 then shows
+the virtual USB device "SideCar AVE" (`05ac:9312`) and the `t2bce_sidecar`
+module turns it into the `t2-sidecar` encoder.
+
+- H.264 (High profile) and HEVC (Main profile) from 8-bit `NV12` input.
+- About 85 frames per second at 1920x1080 and 50 at 2560x1600.
+- About 20 ms from handing over a frame to receiving it encoded.
+- Double buffered, with scatter gather DMA
+
+```bash
+ffmpeg -i input.mp4 -pix_fmt nv12 -c:v h264_v4l2m2m -b:v 10M -c:a copy output.mp4
+```
+
+ffmpeg uses the first `/dev/video` node that can encode the requested format.
+H.264 always lands on `t2-sidecar` because the AVE encoder has no H.264. With
+`hevc_v4l2m2m` either encoder can be picked.HEVC is supported but currently
+interferes with AVE. Hence H264 was chosen as it natively doesn't interfere
+with AVE, which only exposes HEVC and also H264 has a lower latency anyways
+(but requires higher bandwith as a downside). 
