@@ -225,10 +225,10 @@ copy_module_source() {
 
 	if [[ "$name" == "t2bce_stack" ]]; then
 		local component component_src
-		for component in t2bce_dma t2bce_core t2bce_vhci t2bce_audio t2bce_ave; do
+		for component in t2bce_dma t2bce_core t2bce_vhci t2bce_audio t2bce_ave t2bce_sidecar; do
 			component_src="$REPO_ROOT/modules/$component"
-			if [[ "$component" == t2bce_ave ]]; then
-				component_src="$REPO_ROOT/t2-services/t2-ave/kernel/t2bce_ave"
+			if [[ "$component" == t2bce_ave || "$component" == t2bce_sidecar ]]; then
+				component_src="$REPO_ROOT/t2-services/t2-ave/kernel/$component"
 			fi
 			info "staging $component in $dst"
 			install -d -o root -g root -m 0755 "$dst/$component"

@@ -6,7 +6,7 @@ dependency between the three feature packages.
 | Source | Binary package | Installed command | Build dependencies within this tree |
 | --- | --- | --- | --- |
 | `t2-touchid/` | `t2-touchid` | `t2-touchid` | its `protocols/t2-biometrickit`, shared BridgeXPC |
-| `t2-ave/` | `t2-ave` | `t2remote` (existing interface) | shared BridgeXPC |
+| `t2-ave/` | `t2-ave` | `t2remote` (existing interface), AVE and Sidecar encoders | shared BridgeXPC |
 | `t2-journal/` | `t2-journal` | `t2journal` (existing interface) | shared BridgeXPC, its `libs/macos-unifiedlogs` |
 | `shared/` | `t2-services-common` | none | none |
 
@@ -56,9 +56,10 @@ The remaining `kait2en-suspend.service` handles WLAN/Bluetooth only.
 
 ## Kernel boundary
 
-AVE kernel sources live in `t2-ave/kernel/t2bce_ave`. The existing Fedora DKMS
-installer still stages them together with `modules/t2bce_stack` so the shared
-symbol namespace is preserved. The userspace package does not bundle a `.ko`.
-Distributions must provide a compatible `t2bce_ave` and BCE core, either in their
+AVE and Sidecar kernel sources live in `t2-ave/kernel/t2bce_ave` and
+`t2-ave/kernel/t2bce_sidecar`. The existing Fedora DKMS installer stages them
+together with `modules/t2bce_stack` so the shared symbol namespace is preserved.
+The userspace package does not bundle a `.ko`. Distributions must provide
+compatible `t2bce_ave`, `t2bce_sidecar` and BCE core modules, either in their
 kernel or via a separately maintained kernel-module package. This is not a
 dependency on Touch ID or Journal.

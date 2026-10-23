@@ -20,6 +20,9 @@ use t2_bridgexpc::discovery;
 mod ave;
 use ave::Service as RemoteService;
 
+const AVE_SERVICE: &str = "com.apple.aveservice";
+const SIDECAR_SERVICE: &str = "com.apple.videoprocessingd.encode.remote";
+
 struct Manager {
     interface: String,
     host: Ipv6Addr,
@@ -138,11 +141,26 @@ fn serve(socket: &Path, mut manager: Manager) -> Result<()> {
         UnixListener::bind(socket).with_context(|| format!("bind {}", socket.display()))?;
 
     loop {
-        match manager.acquire("com.apple.aveservice".to_owned()) {
+        match manager.acquire(AVE_SERVICE.to_owned()) {
             Ok(()) => break,
             Err(error) => {
-                eprintln!("waiting for com.apple.aveservice: {error:#}");
+                eprintln!("waiting for {AVE_SERVICE}: {error:#}");
                 thread::sleep(Duration::from_secs(2));
+            }
+        }
+    }
+
+    // The T2 exposes the Sidecar encoder as a USB device only while this
+    // connection is held; t2bce_sidecar binds to that device. A failure stays
+    // desired, so resume retries it, and must not hold up AVE.
+    for attempt in 0..5 {
+        match manager.acquire(SIDECAR_SERVICE.to_owned()) {
+            Ok(()) => break,
+            Err(error) => {
+                eprintln!("could not connect {SIDECAR_SERVICE}: {error:#}");
+                if attempt != 4 {
+                    thread::sleep(Duration::from_secs(2));
+                }
             }
         }
     }

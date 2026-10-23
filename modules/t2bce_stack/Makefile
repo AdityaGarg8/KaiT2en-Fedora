@@ -3,6 +3,7 @@ obj-m += t2bce_core/
 obj-m += t2bce_vhci/
 obj-m += t2bce_audio/
 obj-m += t2bce_ave/
+obj-m += t2bce_sidecar/
 
 KVERSION := $(KERNELRELEASE)
 ifeq ($(origin KERNELRELEASE), undefined)

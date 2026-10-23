@@ -15,7 +15,8 @@ Requires: kmod
 
 %description
 Apple T2 AVE service. This package does not require any other T2 feature package.
-A compatible t2bce_ave kernel module must be supplied by the distribution.
+Compatible t2bce_ave and t2bce_sidecar kernel modules must be supplied by the
+distribution.
 
 %prep
 %autosetup -n t2-services-%{version}
