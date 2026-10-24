@@ -1,0 +1,51 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amd/display: avoid MPC pipe split on the MacBookPro16,1
+
+While the Navi 14 of the MacBookPro16,1 drives the built-in 3072x1920
+panel, DML picks two MPC combined pipes for it. With the split the
+surface uses an 8 line swath, and the 55 line vblank of the native
+timing leaves too few lines for prefetch after the DRAM clock change
+wait. DML then reports no DRAM clock change support and DC holds the
+UCLK hard minimum at the top level.
+
+The macOS driver sets DalPipeSplitPolicy to 1 on this machine and drives
+the panel from one pipe at the native timing. Apply the same policy as
+dcdebugmask=0x1 there.
+
+With this change the panel is scanned out by a single HUBP at 3072x1920
+with a 4 line swath, the DRAM clock change watermark is 413 us instead
+of the dummy latency fallback, and UCLK switches during scanout.
+
+This depends on the UCLK levels matching the VBIOS training, otherwise
+UCLK switches during scanout reach a level the SMU cannot switch into.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -70,6 +70,7 @@
+ #include "ivsrcid/ivsrcid_vislands30.h"
+ 
+ #include <linux/backlight.h>
++#include <linux/dmi.h>
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/types.h>
+@@ -2221,7 +2222,16 @@ static int amdgpu_dm_init(struct amdgpu_device *adev)
+ 		goto error;
+ 	}
+ 
+-	if (amdgpu_dc_debug_mask & DC_DISABLE_PIPE_SPLIT) {
++	/*
++	 * On the 3072x1920 panel of the MacBookPro16,1 the MPC split leaves
++	 * too few vblank lines for prefetch, so DML reports no DRAM clock
++	 * change support and UCLK stays at its top level. The macOS driver
++	 * sets DalPipeSplitPolicy to 1 on these GPUs and drives the panel
++	 * from one pipe.
++	 */
++	if ((amdgpu_dc_debug_mask & DC_DISABLE_PIPE_SPLIT) ||
++	    (adev->pdev->subsystem_vendor == PCI_VENDOR_ID_APPLE &&
++	     dmi_match(DMI_PRODUCT_NAME, "MacBookPro16,1"))) {
+ 		adev->dm.dc->debug.force_single_disp_pipe_split = false;
+ 		adev->dm.dc->debug.pipe_split_policy = MPC_SPLIT_AVOID;
+ 	}

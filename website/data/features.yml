@@ -314,6 +314,24 @@ items:
       Runtime GPU switching, dGPU power management, and working suspend and
       resume are available on MacBookPro16,1 and MacBookPro16,4.
 
+  - id: navi14-mbp161-trained-uclk
+    title: "No more dGPU crashes on MacBookPro16,1"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: DRM / amdgpu
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/all/20261024162109.307247-1-dev@deq.rocks/"
+    updated: "2026-10-24"
+    notes: >-
+      Apple's pptable lists other memory clock levels than the VBIOS trained
+      the memory controller at. Switching into such a level hung the SMU and
+      ended in a CATERR at boot or under dGPU load. amdgpu now takes the
+      trained levels from the VBIOS, so the 5300M and 5500M can switch their
+      memory clock freely again.
+
   - id: t2-ave-hardware-encode
     title: "Hardware video encoding (T2 AVE)"
     state: available
