@@ -12,7 +12,6 @@ access when needed.
 | `boot-macos` | Restarts into macOS once. Linux is the default again on the next boot |
 | `update-modules` | Updates the KAIT2EN checkout, then reinstalls the DKMS modules, rebuilds the patched AMDGPU driver on supported models and rebuilds the initramfs |
 | `update-apps` | Updates the KAIT2EN checkout, then reinstalls the KAIT2EN applications |
-| `boot-macos` | reboot into macOS once |
 
 ## Incremental updates
 
