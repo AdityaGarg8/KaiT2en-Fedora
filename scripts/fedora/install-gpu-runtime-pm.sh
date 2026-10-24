@@ -274,7 +274,9 @@ for patch_file in "${PATCH_FILES[@]}"; do
 done
 
 trace_header="$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_trace.h"
-grep -q '^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$' "$trace_header" ||
+# A local kernel tree keeps the rewritten path from an earlier run.
+grep -q -e '^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$' \
+	-e '^#define TRACE_INCLUDE_PATH \.$' "$trace_header" ||
 	fail "unexpected AMDGPU trace include path"
 sed -i 's|^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$|#define TRACE_INCLUDE_PATH .|' \
 	"$trace_header"
