@@ -5,7 +5,8 @@
 0005-drm-amd-display-refuse-DP-AUX-while-GMUX-keeps-the-GPU-off.patch
 0006-drm-amdgpu-skip-AC-DC-notification-while-the-GPU-is-runtime-suspended.patch
 0007-drm-amd-display-skip-panel-power-savings-on-eDP-links-without-a-panel.patch
-0008-drm-amd-pm-cap-UCLK-below-750-MHz-on-the-Navi-14-of-MacBookPro16-1.patch
+0008-drm-amd-pm-use-the-VBIOS-trained-UCLK-levels-on-Apple-Navi-boards.patch
 0009-drm-amd-pm-let-Apple-Navi-boards-lower-the-power-limit-to-40-percent.patch
 0010-Revert-drm-amdgpu-check-ASPM-on-the-dGPU-host-link.patch
 0011-drm-amd-pm-remove-UMC-CDR-workaround-for-Apple-systems.patch
+0012-drm-amd-display-avoid-MPC-pipe-split-on-Apple-Navi-14.patch
