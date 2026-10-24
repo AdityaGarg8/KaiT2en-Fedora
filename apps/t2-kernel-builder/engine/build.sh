@@ -196,14 +196,14 @@ select_kernel_release() {
 	mapfile -t versions < <(
 		curl -fsSL https://kojipkgs.fedoraproject.org/packages/kernel/ |
 			sed -n 's/.*href="\([0-9][^"]*\)\/".*/\1/p' |
-			sort -V |
-			tail -n 10
+			sort -rV |
+			head -n 30
 	)
 
 	for version in "${versions[@]}"; do
 		mapfile -t releases < <(
 			curl -fsSL "https://kojipkgs.fedoraproject.org/packages/kernel/$version/" |
-				sed -n 's/.*href="\([^"]*\.fc[0-9][0-9]*\)\/".*/\1/p' |
+				sed -n "s/.*href=\"\([^\"]*\.fc$fedora_release\)\/\".*/\1/p" |
 				sort -V
 		)
 		release=
@@ -211,6 +211,7 @@ select_kernel_release() {
 			release=$choice
 		done
 		[[ -n $release ]] && candidates+=("$version-$release.x86_64")
+		((${#candidates[@]} == 10)) && break
 	done
 
 	((${#candidates[@]})) || {

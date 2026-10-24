@@ -390,15 +390,24 @@ class KernelBuilder(Adw.Application):
     def _fetch_kernels(self):
         try:
             html = urllib.request.urlopen("https://kojipkgs.fedoraproject.org/packages/kernel/", timeout=20).read().decode()
-            versions = sorted(set(re.findall(r'href="([0-9][^"/]+)/"', html)), key=self.version_key)[-10:]
+            versions = sorted(set(re.findall(r'href="([0-9][^"/]+)/"', html)), key=self.version_key)[-30:]
+            dist = f".fc{self.fedora_release()}"
             found = []
             for version in reversed(versions):
                 page = urllib.request.urlopen(f"https://kojipkgs.fedoraproject.org/packages/kernel/{version}/", timeout=20).read().decode()
-                releases = sorted(set(re.findall(r'href="([^"/]+\.fc[0-9]+)/"', page)), key=self.version_key)
+                releases = sorted({r for r in re.findall(r'href="([^"/]+\.fc[0-9]+)/"', page) if r.endswith(dist)}, key=self.version_key)
                 if releases: found.append(f"{version}-{releases[-1]}.x86_64")
+                if len(found) == 10: break
             GLib.idle_add(self.finish_kernels, found, "")
         except Exception as error:
             GLib.idle_add(self.finish_kernels, [], str(error))
+
+    @staticmethod
+    def fedora_release():
+        for line in Path("/etc/os-release").read_text().splitlines():
+            if line.startswith("VERSION_ID="):
+                return line.split("=", 1)[1].strip('"').split(".")[0]
+        raise RuntimeError("VERSION_ID missing from /etc/os-release")
 
     @staticmethod
     def version_key(value):
