@@ -64,6 +64,10 @@
     "hybrid-graphics": {
       "message_id": "1537074764714082334",
       "hash": "8b6a7278d68261470943182cb08b72ef1cbe37a1b73e391e354dca56b37f4dc8"
+    },
+    "navi14-mbp161-trained-uclk": {
+      "message_id": "1563590381638131894",
+      "hash": "e45af73a65fef34aa6ed57d94ee67139fa4a43cbe46344c30482fafc67c9b893"
     }
   }
 }
