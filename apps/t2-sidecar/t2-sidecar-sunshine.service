@@ -1,0 +1,18 @@
+[Unit]
+Description=Sunshine for the KaiT2en Sidecar display
+Documentation=https://kait2en.org/documentation.html#streaming-using-sidecar
+# Only the Sunshine built as described in the documentation, which encodes
+# with the T2. Without it this unit does nothing.
+ConditionFileIsExecutable=/usr/local/bin/sunshine
+# Runs only while the virtual monitor exists, so GNOME's screen sharing
+# indicator is gone as soon as Sidecar is off.
+BindsTo=t2-sidecar.service
+After=t2-sidecar.service
+
+[Service]
+Type=exec
+# Every virtual monitor is new to GNOME, so the saved screen choice is void
+# and Sunshine has to ask again.
+ExecStartPre=-/usr/bin/rm -f %h/.config/sunshine/portal_token.gnome
+ExecStart=/usr/local/bin/sunshine
+Restart=on-failure

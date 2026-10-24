@@ -1,0 +1,12 @@
+[Unit]
+Description=KaiT2en Sidecar virtual display
+Documentation=https://kait2en.org/documentation.html#streaming-using-sidecar
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=exec
+# Written by `t2-sidecar on`
+EnvironmentFile=-%h/.config/t2-sidecar/env
+ExecStart=/usr/local/libexec/t2-sidecar-display $T2_SIDECAR_MODE
+Restart=no

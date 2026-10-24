@@ -1,0 +1,130 @@
+#!/usr/bin/python3 -I
+"""Switch the Sidecar virtual display on and off.
+
+  t2-sidecar on [WIDTHxHEIGHT[@HZ]]   default the mode used last, else 1920x1200@60
+  t2-sidecar off
+  t2-sidecar status
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+UNIT = "t2-sidecar.service"
+SUNSHINE_UNIT = "t2-sidecar-sunshine.service"
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "t2-sidecar"
+VIRTUAL_VENDOR = "MetaVendor"
+MODE_RE = re.compile(r"\d+x\d+(@\d+(\.\d+)?)?")
+
+
+def systemctl(*args):
+    return subprocess.run(["systemctl", "--user", *args], check=False,
+                          capture_output=True, text=True)
+
+
+def virtual_monitors():
+    """(connector, width, height, refresh) of every virtual monitor Mutter has."""
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    state = bus.call_sync(
+        "org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig",
+        "org.gnome.Mutter.DisplayConfig", "GetCurrentState", None,
+        GLib.VariantType("(ua((ssss)a(siiddada{sv})a{sv})a(iiduba(ssss)a{sv})a{sv})"),
+        Gio.DBusCallFlags.NONE, 5000, None)
+    found = []
+    for (connector, vendor, _, _), modes, _ in state.unpack()[1]:
+        if vendor != VIRTUAL_VENDOR:
+            continue
+        current = next((m for m in modes if m[6].get("is-current")), None)
+        if current:
+            found.append((connector, current[1], current[2], current[3]))
+    return found
+
+
+def show_monitors():
+    for connector, width, height, refresh in virtual_monitors():
+        print(f"  {connector}: {width}x{height}@{refresh:g}")
+
+
+def cmd_on(mode):
+    if mode and not MODE_RE.fullmatch(mode):
+        sys.exit(f"t2-sidecar: expected WIDTHxHEIGHT[@HZ], got {mode!r}")
+    # Without a mode the one used last stays, t2-sidecar-display keeps it current
+    if mode:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        (CONFIG_DIR / "env").write_text(f"T2_SIDECAR_MODE={mode}\n")
+
+    before = {m[0] for m in virtual_monitors()}
+    result = systemctl("restart", UNIT)
+    if result.returncode and "not found" in result.stderr:
+        # Installed after this login, the user manager has not loaded it yet
+        systemctl("daemon-reload")
+        result = systemctl("restart", UNIT)
+    if result.returncode:
+        sys.exit(f"t2-sidecar: could not start {UNIT}: {result.stderr.strip()}")
+
+    for _ in range(50):
+        now = virtual_monitors()
+        if now and {m[0] for m in now} != before:
+            break
+        time.sleep(0.1)
+    else:
+        sys.exit(f"t2-sidecar: no virtual monitor appeared, see journalctl --user -u {UNIT}")
+
+    print("Sidecar display on:")
+    show_monitors()
+    # The unit's condition skips it unless our Sunshine build is installed
+    systemctl("restart", SUNSHINE_UNIT)
+    if systemctl("is-active", SUNSHINE_UNIT).stdout.strip() == "active":
+        print("Sunshine started. Pick the new monitor in the screen sharing dialog.")
+    else:
+        print("A new virtual monitor is created each time. Apps that remember a shared")
+        print("screen, like Sunshine, have to be restarted and pointed at it again.")
+
+
+def cmd_off():
+    systemctl("stop", UNIT)
+    print("Sidecar display off")
+
+
+def cmd_status():
+    active = systemctl("is-active", UNIT).stdout.strip()
+    print(f"Sidecar display: {'on' if active == 'active' else 'off'}")
+    show_monitors()
+    if systemctl("is-active", SUNSHINE_UNIT).stdout.strip() == "active":
+        print("Sunshine: running")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     epilog="\n".join(__doc__.splitlines()[2:]))
+    sub = parser.add_subparsers(dest="command", required=True)
+    on = sub.add_parser("on", help="create the virtual display")
+    on.add_argument("mode", nargs="?",
+                    help="WIDTHxHEIGHT[@HZ], default the mode used last, else 1920x1200@60")
+    sub.add_parser("off", help="remove the virtual display")
+    sub.add_parser("status", help="show whether it is on")
+    args = parser.parse_args()
+
+    try:
+        if args.command == "on":
+            cmd_on(args.mode)
+        elif args.command == "off":
+            cmd_off()
+        else:
+            cmd_status()
+    except GLib.Error as error:
+        sys.exit(f"t2-sidecar: {error.message}")
+
+
+if __name__ == "__main__":
+    main()

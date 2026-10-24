@@ -1,0 +1,217 @@
+#!/usr/bin/python3 -I
+"""Hold a GNOME virtual monitor for Sidecar streaming.
+
+Mutter's org.gnome.Mutter.ScreenCast.RecordVirtual creates the monitor. With
+is-platform it behaves like a connected display, and the modes make it
+configurable in GNOME Settings like one. The monitor exists as long as this
+process keeps its D-Bus connection and the screen cast session open. Nothing
+has to consume the PipeWire stream.
+
+GNOME keeps a monitor layout per set of monitors, and every virtual monitor
+gets a new serial. A new set can come up with a default layout, which reset
+the built-in display's scale to 1. The layout from before is therefore applied
+again, temporarily, with the virtual monitor placed to the right.
+
+For the same reason GNOME does not remember a mode picked for the virtual
+monitor in Settings. It is written to the file `t2-sidecar on` reads instead,
+so the next monitor starts with it.
+"""
+
+import argparse
+import os
+import re
+import signal
+import sys
+import time
+
+import gi
+
+gi.require_version("Gio", "2.0")
+gi.require_version("GLibUnix", "2.0")
+from gi.repository import Gio, GLib, GLibUnix  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+BUS_NAME = "org.gnome.Mutter.ScreenCast"
+OBJECT_PATH = "/org/gnome/Mutter/ScreenCast"
+SESSION_IFACE = BUS_NAME + ".Session"
+CURSOR_EMBEDDED = 1
+
+DC_NAME = "org.gnome.Mutter.DisplayConfig"
+DC_PATH = "/org/gnome/Mutter/DisplayConfig"
+DC_STATE = GLib.VariantType("(ua((ssss)a(siiddada{sv})a{sv})a(iiduba(ssss)a{sv})a{sv})")
+VIRTUAL_VENDOR = "MetaVendor"
+ENV_FILE = (Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+            / "t2-sidecar" / "env")
+LAYOUT_LOGICAL = 1
+APPLY_TEMPORARY = 1
+
+# Offered next to the requested mode, so GNOME Settings can switch between them.
+COMMON_MODES = [(1920, 1080), (1920, 1200), (2560, 1440), (2560, 1600), (2048, 1536)]
+
+
+def parse_mode(text):
+    match = re.fullmatch(r"(\d+)x(\d+)(?:@(\d+(?:\.\d+)?))?", text.strip())
+    if not match:
+        raise argparse.ArgumentTypeError(f"expected WIDTHxHEIGHT[@HZ], got {text!r}")
+    width, height = int(match[1]), int(match[2])
+    refresh = float(match[3]) if match[3] else 60.0
+    if not (320 <= width <= 8192 and 240 <= height <= 8192 and 1 <= refresh <= 240):
+        raise argparse.ArgumentTypeError(f"mode {text!r} out of range")
+    return width, height, refresh
+
+
+def call(bus, path, iface, method, params=None, reply=None):
+    return bus.call_sync(BUS_NAME, path, iface, method, params, reply,
+                         Gio.DBusCallFlags.NONE, 5000, None)
+
+
+def display_state(bus):
+    return bus.call_sync(DC_NAME, DC_PATH, DC_NAME, "GetCurrentState", None, DC_STATE,
+                         Gio.DBusCallFlags.NONE, 5000, None).unpack()
+
+
+def current_modes(monitors):
+    """connector -> (mode id, width, height) of the current mode."""
+    found = {}
+    for (connector, _, _, _), modes, _ in monitors:
+        for mode_id, width, height, *_rest in modes:
+            if _rest[-1].get("is-current"):
+                found[connector] = (mode_id, width, height)
+    return found
+
+
+def wait_for_virtual(bus, known):
+    """Connector of the virtual monitor that was not there before."""
+    for _ in range(50):
+        for (connector, vendor, _, _), _, _ in display_state(bus)[1]:
+            if vendor == VIRTUAL_VENDOR and connector not in known:
+                return connector
+        time.sleep(0.1)
+    return None
+
+
+def restore_layout(bus, layout_before, virtual):
+    serial, monitors, _, properties = display_state(bus)
+    modes = current_modes(monitors)
+    logical_layout = properties.get("layout-mode", LAYOUT_LOGICAL) == LAYOUT_LOGICAL
+    configs = []
+    right = 0
+    for x, y, scale, transform, primary, members, _ in layout_before:
+        connectors = [member[0] for member in members]
+        if not all(c in modes for c in connectors):
+            continue
+        configs.append((x, y, scale, transform, primary,
+                        [(c, modes[c][0], {}) for c in connectors]))
+        _, width, height = modes[connectors[0]]
+        if transform % 2:
+            width = height
+        right = max(right, x + (round(width / scale) if logical_layout else width))
+    configs.append((right, 0, 1.0, 0, False, [(virtual, modes[virtual][0], {})]))
+    bus.call_sync(DC_NAME, DC_PATH, DC_NAME, "ApplyMonitorsConfig",
+                  GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})",
+                               (serial, APPLY_TEMPORARY, configs, {})),
+                  None, Gio.DBusCallFlags.NONE, 5000, None)
+
+
+def remember_mode(bus, virtual):
+    """Store the virtual monitor's current mode for the next `t2-sidecar on`."""
+    for (connector, _, _, _), modes, _ in display_state(bus)[1]:
+        if connector != virtual:
+            continue
+        for _, width, height, refresh, *_rest in modes:
+            if _rest[-1].get("is-current"):
+                line = f"T2_SIDECAR_MODE={width}x{height}@{round(refresh)}\n"
+                if not ENV_FILE.exists() or ENV_FILE.read_text() != line:
+                    ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    ENV_FILE.write_text(line)
+        return
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("mode", type=parse_mode, nargs="?", default="1920x1200@60",
+                        help="preferred mode, WIDTHxHEIGHT[@HZ] (default 1920x1200@60)")
+    args = parser.parse_args()
+    width, height, refresh = args.mode
+
+    modes = []
+    for w, h in [(width, height)] + [m for m in COMMON_MODES if m != (width, height)]:
+        modes.append({
+            "size": GLib.Variant("(uu)", (w, h)),
+            "refresh-rate": GLib.Variant("d", refresh),
+            "is-preferred": GLib.Variant("b", (w, h) == (width, height)),
+        })
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    loop = GLib.MainLoop()
+
+    _, monitors_before, layout_before, _ = display_state(bus)
+    known = {monitor[0][0] for monitor in monitors_before}
+
+    try:
+        session = call(bus, OBJECT_PATH, BUS_NAME, "CreateSession",
+                       GLib.Variant("(a{sv})", ({},)), GLib.VariantType("(o)")).unpack()[0]
+        properties = {
+            "cursor-mode": GLib.Variant("u", CURSOR_EMBEDDED),
+            "is-platform": GLib.Variant("b", True),
+            "modes": GLib.Variant("aa{sv}", modes),
+        }
+        call(bus, session, SESSION_IFACE, "RecordVirtual",
+             GLib.Variant("(a{sv})", (properties,)), GLib.VariantType("(o)"))
+    except GLib.Error as error:
+        print(f"t2-sidecar-display: Mutter refused the virtual monitor: {error.message}",
+              file=sys.stderr)
+        return 1
+
+    def on_closed(*_):
+        print("t2-sidecar-display: Mutter closed the session", file=sys.stderr)
+        loop.quit()
+
+    bus.signal_subscribe(BUS_NAME, SESSION_IFACE, "Closed", session, None,
+                         Gio.DBusSignalFlags.NONE, on_closed)
+
+    def on_terminate():
+        try:
+            call(bus, session, SESSION_IFACE, "Stop")
+        except GLib.Error:
+            pass
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+
+    GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, on_terminate)
+    GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, on_terminate)
+
+    try:
+        call(bus, session, SESSION_IFACE, "Start")
+    except GLib.Error as error:
+        print(f"t2-sidecar-display: could not start the session: {error.message}",
+              file=sys.stderr)
+        return 1
+
+    virtual = wait_for_virtual(bus, known)
+    if not virtual:
+        print("t2-sidecar-display: the virtual monitor did not appear", file=sys.stderr)
+        return 1
+    try:
+        restore_layout(bus, layout_before, virtual)
+    except GLib.Error as error:
+        print(f"t2-sidecar-display: could not restore the layout: {error.message}",
+              file=sys.stderr)
+
+    def on_monitors_changed(*_):
+        try:
+            remember_mode(bus, virtual)
+        except (GLib.Error, OSError) as error:
+            print(f"t2-sidecar-display: could not remember the mode: {error}", file=sys.stderr)
+
+    bus.signal_subscribe(DC_NAME, DC_NAME, "MonitorsChanged", DC_PATH, None,
+                         Gio.DBusSignalFlags.NONE, on_monitors_changed)
+
+    print(f"t2-sidecar-display: virtual monitor {virtual} {width}x{height}@{refresh:g} up",
+          flush=True)
+    loop.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

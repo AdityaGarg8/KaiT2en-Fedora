@@ -28,6 +28,9 @@
 #define T2SC_META_SLOTS		64
 /* Encoded frames waiting for a CAPTURE buffer before the oldest is dropped */
 #define T2SC_MAX_PENDING	16
+/* OUTPUT buffers in the ready queue, the one on the T2 included */
+#define T2SC_MAX_WAITING	2
+#define T2SC_QBUF_WAIT_MS	1000
 
 #define T2SC_STRIDE(w)		ALIGN((w), 64)
 #define T2SC_NV12_SIZE(w, h)	(T2SC_STRIDE(w) * ((h) + DIV_ROUND_UP((h), 2)))
@@ -66,6 +69,8 @@ struct t2sc_ctx {
 	struct v4l2_ctrl_handler ctrls;
 	struct work_struct run_work;
 	struct work_struct drain_work;
+	/* woken whenever an OUTPUT buffer leaves the ready queue */
+	wait_queue_head_t src_wait;
 
 	u32 fps;
 	u32 bitrate;
@@ -250,8 +255,8 @@ static int t2sc_encoder_cmd(struct file *file, void *priv, struct v4l2_encoder_c
 	if (ret)
 		return ret;
 	/*
-	 * Input buffers return as soon as their frame is copied, so with none
-	 * queued frames can still be on the T2. The framework would flag a
+	 * Input buffers return once the T2 has taken their frame, so with none
+	 * queued the last frame can still be on the T2. The framework would flag a
 	 * CAPTURE buffer LAST right away, ahead of them. Drain through
 	 * CompleteFrames instead. With an input buffer queued, its job does it.
 	 */
@@ -262,6 +267,27 @@ static int t2sc_encoder_cmd(struct file *file, void *priv, struct v4l2_encoder_c
 		return 0;
 	}
 	return v4l2_m2m_ioctl_encoder_cmd(file, priv, ec);
+}
+
+static int t2sc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
+{
+	struct t2sc_ctx *ctx = fh_to_ctx(file);
+	struct v4l2_m2m_ctx *m2m = ctx->fh.m2m_ctx;
+
+	if (V4L2_TYPE_IS_OUTPUT(buf->type) && ctx->session &&
+	    v4l2_m2m_num_src_bufs_ready(m2m) >= T2SC_MAX_WAITING) {
+		long ret;
+
+		mutex_unlock(&ctx->video->lock);
+		ret = wait_event_interruptible_timeout(ctx->src_wait,
+				v4l2_m2m_num_src_bufs_ready(m2m) < T2SC_MAX_WAITING ||
+				!READ_ONCE(ctx->session),
+				msecs_to_jiffies(T2SC_QBUF_WAIT_MS));
+		mutex_lock(&ctx->video->lock);
+		if (ret < 0)
+			return ret;
+	}
+	return v4l2_m2m_ioctl_qbuf(file, priv, buf);
 }
 
 static int t2sc_subscribe_event(struct v4l2_fh *fh, const struct v4l2_event_subscription *sub)
@@ -286,7 +312,7 @@ static const struct v4l2_ioctl_ops t2sc_ioctl_ops = {
 	.vidioc_s_parm			= t2sc_s_parm,
 	.vidioc_reqbufs			= v4l2_m2m_ioctl_reqbufs,
 	.vidioc_querybuf		= v4l2_m2m_ioctl_querybuf,
-	.vidioc_qbuf			= v4l2_m2m_ioctl_qbuf,
+	.vidioc_qbuf			= t2sc_qbuf,
 	.vidioc_dqbuf			= v4l2_m2m_ioctl_dqbuf,
 	.vidioc_create_bufs		= v4l2_m2m_ioctl_create_bufs,
 	.vidioc_prepare_buf		= v4l2_m2m_ioctl_prepare_buf,
@@ -520,7 +546,8 @@ static void t2sc_stop_streaming(struct vb2_queue *vq)
 		flush_work(&ctx->drain_work);
 		if (ctx->session) {
 			t2sc_session_close(ctx->session);
-			ctx->session = NULL;
+			WRITE_ONCE(ctx->session, NULL);
+			wake_up(&ctx->src_wait);
 		}
 		if (video->active == ctx)
 			WRITE_ONCE(video->active, NULL);
@@ -553,10 +580,11 @@ static void t2sc_run_work(struct work_struct *work)
 	src = v4l2_m2m_next_src_buf(ctx->fh.m2m_ctx);
 	if (!src)
 		goto finish;
-	last = v4l2_m2m_is_last_draining_src_buf(ctx->fh.m2m_ctx, src);
 	if (!ctx->session) {
+		last = v4l2_m2m_is_last_draining_src_buf(ctx->fh.m2m_ctx, src);
 		v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
 		v4l2_m2m_buf_done(src, VB2_BUF_STATE_ERROR);
+		wake_up(&ctx->src_wait);
 		goto drain;
 	}
 
@@ -578,12 +606,14 @@ static void t2sc_run_work(struct work_struct *work)
 			     y + ctx->src_fmt.plane_fmt[0].bytesperline * ctx->src_fmt.height,
 			     ctx->src_fmt.plane_fmt[0].bytesperline,
 			     container_of(src, struct t2sc_buffer, m2m.vb)->force_keyframe);
-	/* The frame is in the packet now, the producer can refill the buffer. */
-	v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
-	v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
 	ret = t2sc_session_submit(ctx->session);
 	if (ret)
 		pr_warn_ratelimited("frame %u not taken by the T2 (%d)\n", id, ret);
+
+	v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+	last = v4l2_m2m_is_last_draining_src_buf(ctx->fh.m2m_ctx, src);
+	v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
+	wake_up(&ctx->src_wait);
 
 drain:
 	if (last)
@@ -707,6 +737,7 @@ static int t2sc_open(struct file *file)
 	INIT_LIST_HEAD(&ctx->out_list);
 	INIT_WORK(&ctx->run_work, t2sc_run_work);
 	INIT_WORK(&ctx->drain_work, t2sc_drain_work);
+	init_waitqueue_head(&ctx->src_wait);
 	t2sc_fill_src_fmt(&ctx->src_fmt, T2SC_DEFAULT_WIDTH, T2SC_DEFAULT_HEIGHT);
 	t2sc_fill_dst_fmt(&ctx->dst_fmt, T2SC_DEFAULT_WIDTH, T2SC_DEFAULT_HEIGHT,
 			  V4L2_PIX_FMT_HEVC);

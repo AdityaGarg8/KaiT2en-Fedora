@@ -59,17 +59,49 @@ to share. Pick the built-in display. Sunshine remembers the choice and restarts
 itself. Then open <https://localhost:47990>, create a user name and password,
 and pair Moonlight with the PIN it shows.
 
+## Extended display
+
+To use the tablet as a second screen, switch on the Sidecar display:
+
+```bash
+t2-sidecar on
+```
+
+GNOME then shows an additional monitor next to the built-in display. Arrange it,
+set its resolution or switch to mirroring in Settings > Displays like any other
+monitor. Pick the same resolution as in Moonlight, otherwise Sunshine scales
+every frame and the picture gets less sharp. The next `t2-sidecar on` starts
+with the resolution picked last.
+
+With Sunshine installed to `/usr/local/bin/sunshine` as described above,
+`t2-sidecar on` also starts Sunshine, and GNOME asks which screen to share. Pick
+the new monitor. Sunshine runs only while the Sidecar display is on, so GNOME's
+screen sharing indicator is not shown otherwise. Do not start `sunshine` from a
+terminal at the same time.
+
+`t2-sidecar off` stops Sunshine and removes the monitor. Windows on it move back
+to the built-in display. Locking the screen and logging out switch it off as
+well.
+
+Every `t2-sidecar on` creates a new virtual monitor, and GNOME does not apply a
+saved screen choice to it. That is why the dialog comes up each time.
+
 ## Moonlight settings
 
 - Resolution 1080p at 60 frames per second should run well on most modern WiFi
   setups. While testing, we managed around 50 to 60FPS in 2560*1600 using WiFi6
   and a rather modern Android tablet with Snapdragon CPU.
 - Video codec H.264 or automatic.
+- Sound plays on the tablet while streaming. To keep it on the Mac, enable
+  playing audio on the PC in Moonlight's settings. To never stream sound from
+  any device, add `stream_audio = disabled` to `sunshine.conf`.
 
 ## Limitations
 
-- The stream mirrors the built-in display. A separate virtual display is not
-  available yet, but planned (VDD).
+- GNOME asks which screen to share again after every `t2-sidecar on`, see
+  [Extended display](#extended-display).
+- Locking the screen ends the Sidecar display, GNOME stops all screen sharing
+  then. Switch it on again after unlocking.
 - Sunshine logs "Encoder did not produce IDR frame when requested" while
   streaming. The encoder returns frames asynchronously and Sunshine checks the
   wrong packet. Keyframes on request arrive on the requested frame. Seems to be

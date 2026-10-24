@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Ipv6Addr;
-use std::os::unix::net::UnixListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -22,6 +22,8 @@ use ave::Service as RemoteService;
 
 const AVE_SERVICE: &str = "com.apple.aveservice";
 const SIDECAR_SERVICE: &str = "com.apple.videoprocessingd.encode.remote";
+const SIDECAR_VENDOR: &str = "05ac";
+const SIDECAR_PRODUCT: &str = "9312";
 
 struct Manager {
     interface: String,
@@ -39,6 +41,31 @@ impl Manager {
             self.live.insert(service, connection);
         }
         Ok(())
+    }
+
+    /// Replaces a connection the T2 dropped, for example after jetsam killed
+    /// the daemon behind it. The T2 launches the daemon again on connect.
+    fn reconnect(&mut self, service: &str) -> Result<()> {
+        if self.sleeping || !self.desired.contains(service) {
+            return Ok(());
+        }
+        // The peer is gone, dropping the socket is all that is left to do.
+        self.live.remove(service);
+        let mut last_error = None;
+        for attempt in 0..10 {
+            match RemoteService::connect(&self.interface, self.host, service) {
+                Ok(connection) => {
+                    self.live.insert(service.to_owned(), connection);
+                    eprintln!("reconnected {service}");
+                    return Ok(());
+                }
+                Err(error) => last_error = Some(error),
+            }
+            if attempt != 9 {
+                thread::sleep(Duration::from_secs(1));
+            }
+        }
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("T2 reconnect failed")))
     }
 
     fn release(&mut self, service: &str) -> Result<()> {
@@ -165,6 +192,9 @@ fn serve(socket: &Path, mut manager: Manager) -> Result<()> {
         }
     }
 
+    let watch_socket = socket.to_owned();
+    thread::spawn(move || watch_sidecar(&watch_socket));
+
     for incoming in listener.incoming() {
         let mut stream = incoming.context("accept control connection")?;
         let mut line = String::new();
@@ -172,6 +202,8 @@ fn serve(socket: &Path, mut manager: Manager) -> Result<()> {
         let line = line.trim();
         let result = if let Some(service) = line.strip_prefix("acquire ") {
             manager.acquire(service.to_owned()).map(|_| "OK".to_owned())
+        } else if let Some(service) = line.strip_prefix("reconnect ") {
+            manager.reconnect(service).map(|_| "OK".to_owned())
         } else if let Some(service) = line.strip_prefix("release ") {
             manager.release(service).map(|_| "OK".to_owned())
         } else if line == "pre-suspend" {
@@ -195,6 +227,63 @@ fn serve(socket: &Path, mut manager: Manager) -> Result<()> {
     Ok(())
 }
 
+fn sidecar_device_present() -> bool {
+    let Ok(entries) = fs::read_dir("/sys/bus/usb/devices") else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let read = |name| fs::read_to_string(entry.path().join(name)).unwrap_or_default();
+        read("idVendor").trim() == SIDECAR_VENDOR && read("idProduct").trim() == SIDECAR_PRODUCT
+    })
+}
+
+/// The SideCar AVE USB device disappears when the T2 drops the Sidecar
+/// connection, and the daemon gets no other sign of it. Two misses in a row
+/// leave the device time to appear after a fresh connect.
+fn watch_sidecar(socket: &Path) {
+    let mut missing = 0;
+    loop {
+        thread::sleep(Duration::from_secs(2));
+        if sidecar_device_present() {
+            missing = 0;
+            continue;
+        }
+        let Ok(status) = query(socket, "status") else {
+            continue;
+        };
+        let expected = status.contains("sleeping=false")
+            && status
+                .split_whitespace()
+                .find_map(|field| field.strip_prefix("live="))
+                .is_some_and(|live| live.split(',').any(|name| name == SIDECAR_SERVICE));
+        if !expected {
+            missing = 0;
+            continue;
+        }
+        missing += 1;
+        if missing < 2 {
+            continue;
+        }
+        missing = 0;
+        eprintln!("{SIDECAR_SERVICE} lost its USB device, reconnecting");
+        if let Err(error) = query(socket, &format!("reconnect {SIDECAR_SERVICE}")) {
+            eprintln!("could not reconnect {SIDECAR_SERVICE}: {error:#}");
+        }
+    }
+}
+
+fn query(socket: &Path, command: &str) -> Result<String> {
+    let mut stream = UnixStream::connect(socket)
+        .with_context(|| format!("connect {}", socket.display()))?;
+    writeln!(stream, "{command}")?;
+    let mut reply = String::new();
+    BufReader::new(stream).read_line(&mut reply)?;
+    let reply = reply.trim();
+    match reply.strip_prefix("ERR ") {
+        Some(error) => Err(anyhow::anyhow!("{error}")),
+        None => Ok(reply.to_owned()),
+    }
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();

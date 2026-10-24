@@ -178,5 +178,8 @@ fi
 if ! "$REPO_ROOT/apps/t2-power-tune/install.sh"; then
 	warn "t2-power-tune installation failed; continuing"
 fi
+if ! "$REPO_ROOT/apps/t2-sidecar/install.sh"; then
+	warn "t2-sidecar installation failed; continuing"
+fi
 
 info "apps installed"
