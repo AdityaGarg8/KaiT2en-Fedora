@@ -424,3 +424,49 @@ items:
       clocks under load. An amdgpu patch lets the Navi GPUs of Apple Macs
       lower their power limit to 40 % of TDP, so the SMC can balance the
       dGPU as well.
+
+  - id: brcmfmac-bcm4364-txbf
+    title: "Two stream Wi-Fi uplink on BCM4364"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: Wi-Fi / brcmfmac
+    authors:
+      - deqrocks
+    updated: "2026-10-25"
+    notes: >-
+      With TX beamforming on, the BCM4364 firmware sends a single beamformed
+      stream and the uplink tops out at about 350 Mbit/s next to the router.
+      brcmfmac now turns beamforming off on this chip, the firmware picks two
+      streams and the uplink reaches about 620 Mbit/s.
+
+  - id: btbcm-acl-priority
+    title: "Bluetooth audio without dropouts during Wi-Fi traffic"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: Bluetooth / btbcm
+    authors:
+      - deqrocks
+    updated: "2026-10-25"
+    notes: >-
+      On 2.4 GHz with Wi-Fi traffic the Broadcom controller held Bluetooth
+      packets for up to 200 ms and A2DP audio dropped out. hci_bcm and
+      hci_bcm4377 now give every Bluetooth link high priority in the
+      controller as it connects, as macOS/Android does for Broadcom chips.
+      This covers headphones, mice and keyboards.
+
+  - id: brcmfmac-ps-timeout
+    title: "Lower Wi-Fi idle power"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: Wi-Fi / brcmfmac
+    authors:
+      - deqrocks
+    updated: "2026-10-25"
+    notes: >-
+      brcmfmac kept the Wi-Fi radio awake for 2 s after every frame when
+      NetworkManager asked for power save without a timeout. It now uses
+      200 ms, the value Apple configures for the BCM4364. Idle system power
+      on the MacBookPro15,1 dropped from 11.3 W to 9.2 W with Wi-Fi connected.

@@ -1,2 +1,3 @@
 0001-wifi-brcmfmac-disable-TX-beamforming-on-BCM4364.patch
 0002-Bluetooth-btbcm-raise-ACL-priority-on-Apple-Broadcom-controllers.patch
+0003-wifi-brcmfmac-use-a-200-ms-power-save-timeout-by-default.patch
