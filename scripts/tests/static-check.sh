@@ -27,6 +27,9 @@ shell_files=(
 	scripts/fedora/install-gdm-branding.sh
 	scripts/fedora/install-dkms-modules.sh
 	scripts/fedora/install-kernel-args.sh
+	scripts/fedora/install-kernel-source.sh
+	scripts/fedora/install-gpu-runtime-pm.sh
+	scripts/fedora/install-wireless.sh
 	scripts/fedora/install-rtc-sync.sh
 	scripts/fedora/lib.sh
 	scripts/macos/download-fedora-iso.sh

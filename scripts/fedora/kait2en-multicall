@@ -31,7 +31,9 @@ case ${0##*/} in
 	update-modules)
 		refresh_repository
 		sudo bash "$repository/scripts/fedora/install-dkms-modules.sh"
+		sudo bash "$repository/scripts/fedora/install-kernel-source.sh"
 		sudo bash "$repository/scripts/fedora/install-gpu-runtime-pm.sh" install --defer-initramfs
+		sudo bash "$repository/scripts/fedora/install-wireless.sh" install --defer-initramfs
 		sudo bash "$repository/scripts/fedora/rebuild-initramfs.sh"
 		printf 'Reboot to load the updated modules.\n'
 		;;

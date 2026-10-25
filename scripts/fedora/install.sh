@@ -65,8 +65,10 @@ STEPS=(
 	install-dependencies.sh
 	install-kernel-args.sh
 	install-dkms-modules.sh
+	install-kernel-source.sh
 	install-macos-mount.sh
 	install-gpu-runtime-pm.sh
+	install-wireless.sh
 	install-alsa-ucm.sh
 	install-dsp.sh
 	install-acpi-fixes.sh
@@ -86,7 +88,7 @@ for step in "${STEPS[@]}"; do
 	info "running $step"
 	if [[ "$step" == install-plymouth-theme.sh ]]; then
 		step_args=(--defer-initramfs)
-	elif [[ "$step" == install-gpu-runtime-pm.sh ]]; then
+	elif [[ "$step" == install-gpu-runtime-pm.sh || "$step" == install-wireless.sh ]]; then
 		step_args=(install --defer-initramfs)
 	else
 		step_args=()

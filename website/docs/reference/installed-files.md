@@ -98,6 +98,43 @@ sudo /usr/local/libexec/kait2en/gpu-runtime-pm/install-gpu-runtime-pm.sh install
 
 Running the installer again refreshes the copy with the current patches.
 
+The patched AMDGPU and wireless modules are built from the Fedora kernel
+source, which is downloaded once per kernel and kept unpacked at:
+
+```text
+/var/cache/kait2en/kernel-source/<kernel>/linux
+```
+
+`/etc/kernel/install.d/44-kait2en-kernel-source.install` prepares it for every
+new kernel before the build hooks run, logs to
+`/var/log/kait2en-kernel-source.log` and deletes it when the kernel is removed.
+Its copy of the script lives in `/usr/local/libexec/kait2en/kernel-source/`.
+
+On every Mac with Broadcom WLAN or Bluetooth, the installer also builds patched
+brcmfmac and Broadcom Bluetooth modules and installs them for the running
+kernel at:
+
+```text
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/brcmfmac.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/brcmfmac-wcc.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/brcmfmac-cyw.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/brcmfmac-bca.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/btbcm.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/hci_uart.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-wireless/hci_bcm4377.ko.xz
+```
+
+The build script and its patches are copied to
+`/usr/local/libexec/kait2en/wireless/`, and
+`/etc/kernel/install.d/46-kait2en-wireless.install` rebuilds the modules for
+every new kernel after the GPU runtime PM hook. It logs to
+`/var/log/kait2en-wireless.log`, never aborts the kernel update and deletes the
+modules of a removed kernel. To rebuild for a specific kernel by hand:
+
+```bash
+sudo /usr/local/libexec/kait2en/wireless/install-wireless.sh install <kernel>
+```
+
 ## Kernel arguments
 
 `install-kernel-args.sh` updates every installed kernel entry with

@@ -121,24 +121,6 @@ HOOK
 	chmod 0755 "$KERNEL_INSTALL_HOOK"
 }
 
-apply_patch_if_needed() {
-	local tree=$1 patch_file=$2
-
-	if patch -d "$tree" -p1 --dry-run --batch --forward --fuzz=3 \
-			--no-backup-if-mismatch \
-			<"$patch_file" >/dev/null 2>&1; then
-		info "applying ${patch_file#"$REPO_ROOT/"}"
-		patch -d "$tree" -p1 --batch --forward --fuzz=3 \
-			--no-backup-if-mismatch <"$patch_file"
-	elif patch -d "$tree" -p1 --dry-run --batch --reverse --fuzz=3 \
-			--no-backup-if-mismatch \
-			<"$patch_file" >/dev/null 2>&1; then
-		info "${patch_file#"$REPO_ROOT/"} is already present"
-	else
-		fail "patch does not apply to $KVER: ${patch_file#"$REPO_ROOT/"}"
-	fi
-}
-
 patch_needed_for_kernel() {
 	local patch_file=$1 kver=$2
 	local patch_name=${patch_file##*/}
@@ -152,21 +134,6 @@ patch_needed_for_kernel() {
 			;;
 	esac
 	return 0
-}
-
-load_patch_series() {
-	local entry
-
-	[[ -r "$PATCH_SERIES" ]] || fail "patch series is missing: ${PATCH_SERIES#"$REPO_ROOT/"}"
-	while IFS= read -r entry || [[ -n "$entry" ]]; do
-		[[ -n "$entry" && "$entry" != \#* ]] || continue
-		[[ "$entry" != */* && "$entry" != .* ]] ||
-			fail "invalid patch series entry: $entry"
-		[[ -f "$PATCH_DIR/$entry" ]] ||
-			fail "patch listed in series is missing: $entry"
-		PATCH_FILES+=("$PATCH_DIR/$entry")
-	done <"$PATCH_SERIES"
-	((${#PATCH_FILES[@]} > 0)) || fail "patch series is empty"
 }
 
 case "$ACTION" in
@@ -188,7 +155,7 @@ fi
 load_patch_series
 
 info "installing build dependencies for $KVER"
-build_tree=$(readlink -f "/lib/modules/$KVER/build" 2>/dev/null || true)
+build_tree=$(readlink -f "/lib/modules/$KVER/build" || true)
 if [[ -n "$build_tree" && -f "$build_tree/Makefile" &&
 	-f "$build_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c" ]]; then
 	local_kernel_tree=1
@@ -219,7 +186,7 @@ fi
 
 # Inside kernel-install, 50-depmod has not indexed the DKMS modules yet.
 if ! modinfo -k "$KVER" t2gmux >/dev/null 2>&1 &&
-	[[ -z $(find "/usr/lib/modules/$KVER" -name 't2gmux.ko*' -print -quit 2>/dev/null) ]]; then
+	[[ -z $(find "/usr/lib/modules/$KVER" -name 't2gmux.ko*' -print -quit) ]]; then
 	fail "t2gmux is not installed for $KVER"
 fi
 
@@ -229,40 +196,14 @@ trap 'rm -rf "$workdir"' EXIT
 if ((local_kernel_tree)); then
 	kernel_tree=$build_tree
 else
-	source_rpm=$(rpm -q --qf '%{SOURCERPM}\n' "kernel-core-$KVER") ||
-		fail "kernel-core-$KVER is not installed"
-	source_name=${source_rpm%%-*}
-	source_version=$(rpm -q --qf '%{VERSION}\n' "kernel-core-$KVER")
-	source_release=$(rpm -q --qf '%{RELEASE}\n' "kernel-core-$KVER")
-	source_url="https://kojipkgs.fedoraproject.org/packages/$source_name/$source_version/$source_release/src/$source_rpm"
-	source_dir="$workdir/sources"
-	download_dir="$workdir/download"
-	mkdir -p "$source_dir" "$download_dir" "$workdir/kernel"
-
-	info "downloading $source_rpm"
-	downloaded_srpm="$download_dir/$source_rpm"
-	curl --fail --location --output "$downloaded_srpm" "$source_url" ||
-		fail "unable to download $source_url"
-
-	info "extracting Fedora kernel sources"
-	(
-		cd "$source_dir"
-		rpm2cpio "$downloaded_srpm" | cpio -idm --quiet
-	)
-
-	kernel_tarball=$(find "$source_dir" -maxdepth 1 -type f -name 'linux-*.tar.xz' -print -quit)
-	redhat_patch=$(find "$source_dir" -maxdepth 1 -type f -name 'patch-*-redhat.patch' -print -quit)
-	[[ -n "$kernel_tarball" ]] || fail "upstream kernel tarball is missing from $source_rpm"
-	[[ -n "$redhat_patch" ]] || fail "Fedora kernel patch is missing from $source_rpm"
-
-	info "preparing the Fedora kernel sources for $KVER"
-	tar -xf "$kernel_tarball" -C "$workdir/kernel"
-	amdgpu_source=$(find "$workdir/kernel" -type f \
-		-path '*/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c' -print -quit)
-	[[ -n "$amdgpu_source" ]] || fail "kernel source tree was not found"
-	kernel_tree=${amdgpu_source%/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c}
-	git -C "$kernel_tree" apply "$redhat_patch" ||
-		fail "Fedora kernel patch does not apply to its upstream source"
+	pool_tree=$(kernel_source_tree "$KVER") ||
+		fail "kernel source for $KVER is unavailable"
+	# Reflinks on btrfs make the copy of the shared pool nearly free.
+	cp -a --reflink=auto "$pool_tree" "$workdir/kernel" ||
+		fail "unable to copy the kernel source for $KVER"
+	kernel_tree="$workdir/kernel"
+	[[ -f "$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c" ]] ||
+		fail "kernel source tree was not found"
 fi
 
 for patch_file in "${PATCH_FILES[@]}"; do

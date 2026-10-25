@@ -35,8 +35,13 @@ record_error() {
 installation_summary() {
 	# The installer runs under sudo, so the report was root-owned throughout
 	# the run. Hand it to the invoking user now that nothing else writes to it.
+	# The .hard file exists only when an error was recorded.
+	local report
 	if [[ ${EUID:-$(id -u)} -eq 0 && -n "${SUDO_USER:-}" ]]; then
-		chown "$SUDO_USER" "$KAIT2EN_INSTALL_ERRORS" "$KAIT2EN_INSTALL_HARD_ERRORS" 2>/dev/null || true
+		for report in "$KAIT2EN_INSTALL_ERRORS" "$KAIT2EN_INSTALL_HARD_ERRORS"; do
+			[[ -e "$report" ]] || continue
+			chown "$SUDO_USER" "$report" || printf '[kait2en] warning: cannot hand %s to %s\n' "$report" "$SUDO_USER" >&2
+		done
 	fi
 	if [[ -s "$KAIT2EN_INSTALL_HARD_ERRORS" ]]; then
 		printf '[kait2en] installation completed with errors:\n' >&2
@@ -213,4 +218,129 @@ kernel_version_ge() {
 		return 0
 	fi
 	return 1
+}
+
+# Unpacked and Fedora-patched kernel source per kernel release, shared by
+# every step that rebuilds in-tree drivers, so the SRPM is downloaded once per
+# kernel. Callers copy what they patch, the pool itself is never patched. A
+# self-built kernel with a full source tree behind /lib/modules/<kver>/build
+# is used directly. Prints the tree, messages go to stderr.
+KERNEL_SOURCE_CACHE=/var/cache/kait2en/kernel-source
+
+kernel_source_tree() {
+	local kver=$1
+	local pool="$KERNEL_SOURCE_CACHE/$kver"
+	local build_tree staging source_rpm source_name source_version
+	local source_release source_url tarball redhat_patch tree
+
+	build_tree=$(readlink -f "/lib/modules/$kver/build" || true)
+	if [[ -n "$build_tree" && -f "$build_tree/Makefile" && -f "$build_tree/init/main.c" ]]; then
+		printf '%s\n' "$build_tree"
+		return 0
+	fi
+	if [[ -f "$pool/.complete" && -d "$pool/linux" ]]; then
+		printf '%s\n' "$pool/linux"
+		return 0
+	fi
+
+	source_rpm=$(rpm -q --qf '%{SOURCERPM}\n' "kernel-core-$kver") || {
+		record_error "kernel-core-$kver is not installed, no kernel source for it"
+		return 1
+	}
+	source_name=${source_rpm%%-*}
+	source_version=$(rpm -q --qf '%{VERSION}\n' "kernel-core-$kver")
+	source_release=$(rpm -q --qf '%{RELEASE}\n' "kernel-core-$kver")
+	source_url="https://kojipkgs.fedoraproject.org/packages/$source_name/$source_version/$source_release/src/$source_rpm"
+
+	rm -rf "$pool" "$pool".partial.*
+	staging="$pool.partial.$$"
+	mkdir -p "$staging/srpm" "$staging/unpacked" || {
+		record_error "unable to create $staging"
+		return 1
+	}
+
+	info "downloading $source_rpm" >&2
+	if ! curl --fail --location --silent --show-error \
+			--output "$staging/$source_rpm" "$source_url"; then
+		rm -rf "$staging"
+		record_error "unable to download $source_url"
+		return 1
+	fi
+
+	info "preparing the Fedora kernel sources for $kver" >&2
+	if ! (cd "$staging/srpm" && rpm2cpio "../$source_rpm" | cpio -idm --quiet); then
+		rm -rf "$staging"
+		record_error "unable to unpack $source_rpm"
+		return 1
+	fi
+	tarball=$(find "$staging/srpm" -maxdepth 1 -type f -name 'linux-*.tar.xz' -print -quit)
+	redhat_patch=$(find "$staging/srpm" -maxdepth 1 -type f -name 'patch-*-redhat.patch' -print -quit)
+	if [[ -z "$tarball" || -z "$redhat_patch" ]]; then
+		rm -rf "$staging"
+		record_error "$source_rpm lacks the upstream tarball or the Fedora patch"
+		return 1
+	fi
+	if ! tar -xf "$tarball" -C "$staging/unpacked"; then
+		rm -rf "$staging"
+		record_error "unable to extract $tarball"
+		return 1
+	fi
+	tree=$(find "$staging/unpacked" -mindepth 1 -maxdepth 1 -type d -print -quit)
+	if [[ -z "$tree" ]] || ! git -C "$tree" apply "$redhat_patch"; then
+		rm -rf "$staging"
+		record_error "Fedora kernel patch does not apply to its upstream source"
+		return 1
+	fi
+
+	mv "$tree" "$staging/linux"
+	rm -rf "$staging/srpm" "$staging/unpacked" "${staging:?}/$source_rpm"
+	touch "$staging/.complete"
+	mv "$staging" "$pool"
+	printf '%s\n' "$pool/linux"
+}
+
+# Drops the pooled sources of kernels that are no longer installed.
+prune_kernel_sources() {
+	local entry
+
+	[[ -d "$KERNEL_SOURCE_CACHE" ]] || return 0
+	for entry in "$KERNEL_SOURCE_CACHE"/*; do
+		[[ -e "$entry" ]] || continue
+		[[ -d "/usr/lib/modules/${entry##*/}" ]] || rm -rf "$entry"
+	done
+}
+
+# Patch helpers for scripts that rebuild in-tree drivers. They expect
+# PATCH_DIR, PATCH_SERIES, PATCH_FILES and KVER from the caller.
+apply_patch_if_needed() {
+	local tree=$1 patch_file=$2
+
+	if patch -d "$tree" -p1 --dry-run --batch --forward --fuzz=3 \
+			--no-backup-if-mismatch \
+			<"$patch_file" >/dev/null 2>&1; then
+		info "applying ${patch_file#"$REPO_ROOT/"}"
+		patch -d "$tree" -p1 --batch --forward --fuzz=3 \
+			--no-backup-if-mismatch <"$patch_file"
+	elif patch -d "$tree" -p1 --dry-run --batch --reverse --fuzz=3 \
+			--no-backup-if-mismatch \
+			<"$patch_file" >/dev/null 2>&1; then
+		info "${patch_file#"$REPO_ROOT/"} is already present"
+	else
+		fail "patch does not apply to $KVER: ${patch_file#"$REPO_ROOT/"}"
+	fi
+}
+
+load_patch_series() {
+	local entry
+
+	[[ -r "$PATCH_SERIES" ]] || fail "patch series is missing: ${PATCH_SERIES#"$REPO_ROOT/"}"
+	while IFS= read -r entry || [[ -n "$entry" ]]; do
+		[[ -n "$entry" && "$entry" != \#* ]] || continue
+		[[ "$entry" != */* && "$entry" != .* ]] ||
+			fail "invalid patch series entry: $entry"
+		[[ -f "$PATCH_DIR/$entry" ]] ||
+			fail "patch listed in series is missing: $entry"
+		PATCH_FILES+=("$PATCH_DIR/$entry")
+	done <"$PATCH_SERIES"
+	((${#PATCH_FILES[@]} > 0)) || fail "patch series is empty"
 }
