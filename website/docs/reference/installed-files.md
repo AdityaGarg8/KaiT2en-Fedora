@@ -223,12 +223,12 @@ audio behavior and diagnostics.
 | `/usr/local/bin/t2remote` | RemoteXPC service manager; `t2remote status` shows the live services. Listens on `/run/t2remote.sock` |
 | NetworkManager profile `Apple T2 Bridge` | IPv6 link-local connection to the T2 over its internal CDC-NCM interface, bound to the interface's MAC address. Replaces the earlier `t2_ncm` udev rule |
 | `/etc/modprobe.d/kait2en-silent-blacklist.conf` | Silently ignores attempts to load drivers replaced by KAIT2EN modules |
-| `/usr/share/plymouth/themes/kait2en/` | macOS-style boot splash with a KAIT2EN logo |
+| `/usr/share/plymouth/themes/kait2en/` | Boot splash in the KaiT2en Vornehm style, the silver kanji above a slim progress bar |
 | `/etc/plymouth/plymouthd.conf` | Selects the KAIT2EN theme, pins `DeviceScale=1` and sets `UseSimpledrm=0` so the splash does not resize when i915 replaces the 2880x1800 EFI framebuffer |
-| `/usr/share/pixmaps/kait2en-gdm-logo.png` | White and red KAIT2EN logo shown by GDM |
+| `/usr/share/pixmaps/kait2en-gdm-logo.png` | Silver and red KAIT2EN logo shown by GDM |
 | `/etc/dconf/db/gdm.d/00-kait2en` | Configures the GDM logo and solid black login background |
 | `/usr/share/backgrounds/kait2en/gdm-black.png` | Black GDM background image |
-| `/usr/share/gnome-shell/gnome-shell-theme.gresource` | GNOME Shell theme patched so the GDM and lock-screen shield render black |
+| `/usr/share/gnome-shell/gnome-shell-theme.gresource` | GNOME Shell theme patched so the GDM and lock-screen shield render black and the login controls get the KaiT2en Vornehm glass |
 | `/etc/dracut.conf.d/90-kait2en-input.conf` | Keeps the internal keyboard drivers, `t2smc` and `t2sbs` in initramfs images built during kernel updates |
 | `/boot/initramfs-<running-kernel>.img` | Rebuilt by Dracut after modules and ACPI handling are complete |
 
@@ -313,7 +313,8 @@ MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4 get
 `t2-hybrid-gpu-control`; other MacBook Pro models with Intel and AMD display
 devices get `t2-dgpu-control`.
 All KAIT2EN desktop applications use the shared header wordmark at
-`/usr/local/share/kait2en/kait2en-wordmark.png`.
+`/usr/local/share/kait2en/kait2en-wordmark.png` in the dark style and
+`/usr/local/share/kait2en/kait2en-wordmark-light.png` in the light style.
 
 | Application | Installed files |
 | --- | --- |

@@ -33,7 +33,7 @@ for command_name in grep install plymouth-set-default-theme rm sed; do
 	command -v "$command_name" >/dev/null 2>&1 ||
 		missing_requirements+=("command $command_name")
 done
-for asset in kait2en.plymouth kait2en.script watermark.png \
+for asset in kait2en.plymouth kait2en.script \
 		boot.png box.png bullet.png entry.png lock.png progress_bar.png progress_box.png; do
 	[[ -r "$THEME_SRC/$asset" ]] || missing_requirements+=("asset $asset")
 done

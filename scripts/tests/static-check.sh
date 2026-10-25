@@ -105,6 +105,11 @@ grep -Fq 'ask_touchbar' scripts/fedora/install.sh
 # switch the panel before the session can open it.
 grep -Fq 'has_touch_bar' scripts/fedora/install.sh
 grep -Fq 'has_touch_bar' scripts/fedora/install-apps.sh
+# KaiT2en Vornehm is optional, offered only with GNOME and installed as
+# the user who runs sudo.
+grep -Fq 'ask_vornehm' scripts/fedora/install.sh
+grep -Fq 'KAIT2EN_INSTALL_VORNEHM' scripts/fedora/install.sh
+grep -Fq 'as_vornehm_user bash "$SCRIPT_DIR/install-vornehm.sh"' scripts/fedora/install.sh
 grep -Fq 'device_access_ready' apps/t2-touchbar/install.sh
 # ISOs up to v0.1.12 delegate to the old installer path.
 grep -Fq 'auto-installer/runtime' packaging/installer/runtime/kait2en-install

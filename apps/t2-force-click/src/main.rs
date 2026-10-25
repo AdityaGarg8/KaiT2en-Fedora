@@ -43,13 +43,18 @@ fn action_kind_from_selection(selected: u32) -> ActionKind {
 }
 
 fn kait2en_brand() -> gtk4::DrawingArea {
-    let pixbuf = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    // White type for dark surfaces, dark type for light ones. Without the
+    // light file the white one is used.
+    let dark = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
         .expect("failed to load kait2en wordmark");
+    let light = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+        .unwrap_or_else(|_| dark.clone());
     let brand = gtk4::DrawingArea::new();
     brand.set_content_width(80);
     brand.set_content_height(21);
     brand.set_size_request(80, 21);
     brand.set_draw_func(move |_area, context, width, height| {
+        let pixbuf = if adw::StyleManager::default().is_dark() { &dark } else { &light };
         let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
         let _ = context.save();
         context.translate(
@@ -61,34 +66,35 @@ fn kait2en_brand() -> gtk4::DrawingArea {
         let _ = context.paint();
         let _ = context.restore();
     });
+    let weak = brand.downgrade();
+    adw::StyleManager::default().connect_dark_notify(move |_| {
+        if let Some(brand) = weak.upgrade() {
+            brand.queue_draw();
+        }
+    });
     brand
 }
 
 fn palette_css(dark: bool) -> String {
     let (window_bg, window_fg) = if dark {
-        ("#161616", "#e8e8e8")
+        ("#151517", "#e8e8e8")
     } else {
-        ("#f2f2f2", "#242424")
+        ("#ffffff", "#242424")
     };
+    let rim = if dark { "rgba(255,255,255,0.24)" } else { "rgba(255,255,255,0.70)" };
 
     format!(
-        "window, popover, .force-root, .force-root headerbar {{
+        "window, .force-root, headerbar {{
              background: {window_bg};
              color: alpha({window_fg}, 0.72);
-             font-family: 'JetBrains Mono';
-             font-size: 11pt;
-             font-weight: 400;
          }}
          label, button, button label, entry, dropdown, scale {{
              color: alpha({window_fg}, 0.72);
-             font-family: 'JetBrains Mono';
-             font-size: 11pt;
-             font-weight: 400;
          }}
-         headerbar {{ background: @headerbar_bg_color; }}
-         .footer-link, .footer-link > label, .footer-version {{
-             font-family: 'JetBrains Mono'; font-size: 11pt; font-weight: 400;
-         }}
+         .heading, windowtitle .title {{ color: {window_fg}; font-weight: 600; }}
+         window.csd {{ border-top: 1px solid {rim}; }}
+         window.csd.maximized, window.csd.tiled, window.csd.tiled-top, window.csd.tiled-left,
+         window.csd.tiled-right, window.csd.tiled-bottom, window.csd.fullscreen {{ border-top-width: 0; }}
          .footer-version {{ opacity: 0.6; }}
          .command-help {{ opacity: 0.72; }}"
     )

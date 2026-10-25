@@ -20,9 +20,17 @@ APP_ID = "org.t2kernelbuilder.gtk"
 APP_VERSION = "0.03"
 
 def kait2en_brand():
-    pixbuf = GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    # White type for dark surfaces, dark type for light ones. Without the
+    # light file the white one is used.
+    dark = GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    try:
+        light = GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+    except GLib.Error:
+        light = dark
+    manager = Adw.StyleManager.get_default()
     brand = Gtk.DrawingArea(content_width=80, content_height=21)
     def draw(_area, context, width, height):
+        pixbuf = dark if manager.get_dark() else light
         scale = min(width / pixbuf.get_width(), height / pixbuf.get_height())
         context.save()
         context.translate((width - pixbuf.get_width() * scale) / 2,
@@ -31,6 +39,7 @@ def kait2en_brand():
         Gdk.cairo_set_source_pixbuf(context, pixbuf, 0, 0)
         context.paint(); context.restore()
     brand.set_draw_func(draw); brand.set_size_request(80, 21)
+    manager.connect("notify::dark", lambda *_: brand.queue_draw())
     return brand
 HERE = Path(__file__).resolve().parent
 SOURCE_ENGINE = HERE / "engine"
@@ -72,18 +81,25 @@ class KconfigItem(GObject.Object):
 
 def palette_css(dark):
     if dark:
-        window, fg, panel, shadow = "#161616", "#e8e8e8", "#101010", "rgba(0,0,0,0.32)"
+        window, fg, panel, shadow = "#151517", "#e8e8e8", "#0d0d0f", "rgba(0,0,0,0.32)"
+        rim, line = "rgba(255,255,255,0.24)", "rgba(255,255,255,0.06)"
     else:
-        window, fg, panel, shadow = "#f2f2f2", "#242424", "#e8e8e8", "rgba(0,0,0,0.14)"
-    return (f"window,popover{{font-family:'JetBrains Mono';font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}"
-            f"button,button label,entry,spinbutton,dropdown{{font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}"
+        window, fg, panel, shadow = "#ffffff", "#242424", "#e2e2e8", "rgba(0,0,0,0.14)"
+        rim, line = "rgba(255,255,255,0.70)", "rgba(0,0,0,0.08)"
+    return (f"window{{color:alpha({fg},0.72);}}"
+            f"button,button label,entry,spinbutton,dropdown{{color:alpha({fg},0.72);}}"
+            f".monospace{{font-family:'JetBrains Mono';}}"
+            f"window.csd{{border-top:1px solid {rim};}}"
+            f"window.csd.maximized,window.csd.tiled,window.csd.tiled-top,window.csd.tiled-left,"
+            f"window.csd.tiled-right,window.csd.tiled-bottom,window.csd.fullscreen{{border-top-width:0;}}"
             f".app-background{{background:{window};color:alpha({fg},0.72);}}"
-            f".app-background headerbar{{background:@headerbar_bg_color;color:alpha({fg},0.72);}}"
-            f".app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-size:11pt;font-weight:400;}}"
-            f".app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}"
-            f".unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;}}"
+            f".app-background headerbar{{background:{window};color:alpha({fg},0.72);}}"
+            f".app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-weight:600;}}"
+            f".app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);}}"
+            f".unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;box-shadow:inset 0 0 0 1px {line};}}"
+            f".unified-box textview,.unified-box textview>text{{background:transparent;}}"
             f".sticky-bar{{background:{panel};color:alpha({fg},0.72);padding:9px 18px;box-shadow:0 -5px 12px {shadow};}}"
-            f".donate-link,.donate-link>label{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}")
+            f".donate-link,.donate-link>label{{color:alpha({fg},0.72);}}")
 
 class KernelBuilder(Adw.Application):
     def __init__(self):
@@ -141,7 +157,7 @@ class KernelBuilder(Adw.Application):
         log_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         log_panel.add_css_class("unified-box")
         log_panel.set_hexpand(True); log_panel.set_size_request(280, -1)
-        log_panel.set_margin_top(10); log_panel.set_margin_bottom(10); log_panel.set_margin_end(14)
+        log_panel.set_margin_top(10); log_panel.set_margin_bottom(10); log_panel.set_margin_end(18)
         self.log = Gtk.TextView(editable=False, cursor_visible=False, monospace=True,
                                 wrap_mode=Gtk.WrapMode.NONE)
         self.log_end_mark = self.log.get_buffer().create_mark(None,
@@ -297,7 +313,7 @@ class KernelBuilder(Adw.Application):
         root.append(self.activity)
 
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8)
+        footer.set_margin_start(18); footer.set_margin_end(18); footer.set_margin_bottom(8)
         self.notice = Gtk.Label(xalign=0, wrap=True)
         self.notice.set_margin_start(18); self.notice.set_margin_end(18)
         self.notice.set_margin_top(6); self.notice.set_margin_bottom(6)

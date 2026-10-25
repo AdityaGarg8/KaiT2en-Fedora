@@ -3,6 +3,7 @@ mod control;
 mod error;
 mod ipc;
 mod service;
+mod style;
 mod sysfs;
 
 use std::{
@@ -35,16 +36,27 @@ use signal_hook::consts::signal::SIGHUP;
 use sysfs::{discover_fans, discover_temperature_sources, FanEndpoint, TemperatureSnapshot, TemperatureSource};
 
 fn kait2en_brand() -> DrawingArea {
-    let pixbuf = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    // White type for dark surfaces, dark type for light ones. Without the
+    // light file the white one is used.
+    let dark = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
         .expect("failed to load kait2en wordmark");
+    let light = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+        .unwrap_or_else(|_| dark.clone());
     let brand = DrawingArea::new();
     brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
     brand.set_draw_func(move |_area, context, width, height| {
+        let pixbuf = if adw::StyleManager::default().is_dark() { &dark } else { &light };
         let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
         let _ = context.save();
         context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
         context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
         let _ = context.paint(); let _ = context.restore();
+    });
+    let weak = brand.downgrade();
+    adw::StyleManager::default().connect_dark_notify(move |_| {
+        if let Some(brand) = weak.upgrade() {
+            brand.queue_draw();
+        }
     });
     brand
 }
@@ -55,15 +67,11 @@ const HISTORY_CAPACITY: usize = 90;
 
 #[derive(Clone, Copy)]
 struct ThemePalette {
-    window_bg: &'static str,
-    window_fg: &'static str,
     chip_border: &'static str,
     chip_hover_bg: &'static str,
     chip_checked_bg: &'static str,
     chip_checked_border: &'static str,
     meta_fg: &'static str,
-    panel_fill: (f64, f64, f64),
-    grid: (f64, f64, f64),
     cpu: (f64, f64, f64),
     gpu: (f64, f64, f64),
     effective: (f64, f64, f64),
@@ -71,19 +79,14 @@ struct ThemePalette {
     system: (f64, f64, f64),
     fan: (f64, f64, f64),
     curve: (f64, f64, f64),
-    label: (f64, f64, f64),
 }
 
 const DARK_PALETTE: ThemePalette = ThemePalette {
-    window_bg: "#161616",
-    window_fg: "#e8e8e8",
     chip_border: "rgba(210,210,210,0.24)",
     chip_hover_bg: "rgba(255,255,255,0.04)",
     chip_checked_bg: "rgba(255,255,255,0.10)",
     chip_checked_border: "rgba(232,232,232,0.45)",
     meta_fg: "rgba(230,230,230,0.62)",
-    panel_fill: (0.063, 0.063, 0.063),
-    grid: (0.28, 0.30, 0.32),
     cpu: (0.92, 0.54, 0.28),
     gpu: (0.34, 0.60, 0.86),
     effective: (0.68, 0.82, 0.42),
@@ -91,19 +94,14 @@ const DARK_PALETTE: ThemePalette = ThemePalette {
     system: (0.78, 0.52, 0.88),
     fan: (0.50, 0.76, 0.58),
     curve: (0.86, 0.86, 0.88),
-    label: (0.56, 0.56, 0.56),
 };
 
 const LIGHT_PALETTE: ThemePalette = ThemePalette {
-    window_bg: "#f2f2f2",
-    window_fg: "#242424",
     chip_border: "rgba(0,0,0,0.18)",
     chip_hover_bg: "rgba(0,0,0,0.05)",
     chip_checked_bg: "rgba(0,0,0,0.10)",
     chip_checked_border: "rgba(0,0,0,0.35)",
     meta_fg: "rgba(36,36,36,0.68)",
-    panel_fill: (0.91, 0.91, 0.91),
-    grid: (0.72, 0.72, 0.72),
     cpu: (0.86, 0.43, 0.18),
     gpu: (0.20, 0.45, 0.75),
     effective: (0.42, 0.62, 0.18),
@@ -111,7 +109,6 @@ const LIGHT_PALETTE: ThemePalette = ThemePalette {
     system: (0.55, 0.30, 0.68),
     fan: (0.30, 0.58, 0.38),
     curve: (0.20, 0.20, 0.22),
-    label: (0.096, 0.096, 0.096),
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -641,16 +638,13 @@ fn build_ui(app: &Application) {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("T2 Fan Control")
-        .default_width(380)
+        .default_width(380 + 2 * (style::SIDE_MARGIN - 8))
         .default_height(640)
         .build();
     window.set_resizable(true);
 
     let root = GtkBox::new(Orientation::Vertical, 8);
-    root.set_margin_top(8);
-    root.set_margin_bottom(8);
-    root.set_margin_start(8);
-    root.set_margin_end(8);
+    style::pad(&root);
 
     let header = adw::HeaderBar::new();
     header.set_title_widget(Some(&adw::WindowTitle::new("Fan Control", "")));
@@ -697,7 +691,7 @@ fn build_ui(app: &Application) {
     let any_sensor_row = GtkBox::new(Orientation::Horizontal, 8);
     any_sensor_row.set_halign(Align::End);
     any_sensor_row.append(&ui.any_sensor_check);
-    any_sensor_row.append(&unit_entry(&ui.any_sensor_temp, "C"));
+    any_sensor_row.append(&unit_entry(&ui.any_sensor_temp, "°C"));
 
     let curve_sensor_row = GtkBox::new(Orientation::Horizontal, 8);
     curve_sensor_row.set_halign(Align::End);
@@ -1121,12 +1115,12 @@ fn panel(
     widget: &impl IsA<gtk4::Widget>,
     legend: Option<&str>,
 ) -> GtkBox {
-    let box_ = GtkBox::new(Orientation::Vertical, 3);
+    let box_ = GtkBox::new(Orientation::Vertical, 6);
     let label = Label::new(Some(title));
     label.set_halign(Align::Start);
     label.add_css_class("panel-title");
     box_.append(&label);
-    box_.append(widget);
+    box_.append(&style::card(widget));
     if let Some(legend) = legend {
         let legend_label = Label::new(None);
         legend_label.set_halign(Align::Start);
@@ -1192,14 +1186,14 @@ fn install_delayed_tooltip(widget: &impl IsA<gtk4::Widget>, text: &str) {
 }
 
 fn dynamic_panel(title: &Label, widget: &impl IsA<gtk4::Widget>, legend: &Label) -> GtkBox {
-    let box_ = GtkBox::new(Orientation::Vertical, 3);
+    let box_ = GtkBox::new(Orientation::Vertical, 6);
     title.set_halign(Align::Start);
     title.add_css_class("panel-title");
     legend.set_halign(Align::Start);
     legend.set_xalign(0.0);
     legend.add_css_class("meta-text");
     box_.append(title);
-    box_.append(widget);
+    box_.append(&style::card(widget));
     box_.append(legend);
     box_
 }
@@ -1250,7 +1244,7 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
         model.snapshot.temperatures.overall_hottest_sensor_name.as_deref(),
         model.snapshot.temperatures.overall_hottest_temp_c,
     ) {
-        (Some(name), Some(temp)) => format!("{name} · {temp} C"),
+        (Some(name), Some(temp)) => format!("{name} · {temp} °C"),
         _ => String::from("unavailable"),
     };
     ui.overall_hottest_sensor_label.set_label(&overall_hottest);
@@ -1424,7 +1418,7 @@ fn full_speed_reason(model: &AppModel) -> String {
             model.snapshot.temperatures.overall_hottest_sensor_name.as_deref(),
             model.snapshot.temperatures.overall_hottest_temp_c,
         ) {
-            (Some(name), Some(temp)) => format!("Any sensor · {name} · {temp} C"),
+            (Some(name), Some(temp)) => format!("Any sensor · {name} · {temp} °C"),
             _ => String::from("Any-sensor protection"),
         });
     }
@@ -1433,7 +1427,7 @@ fn full_speed_reason(model: &AppModel) -> String {
             model.snapshot.temperatures.hottest_sensor_name.as_deref(),
             model.snapshot.effective_temp_c,
         ) {
-            (Some(name), Some(temp)) => format!("Fan curve · {name} · {temp} C"),
+            (Some(name), Some(temp)) => format!("Fan curve · {name} · {temp} °C"),
             _ => String::from("Fan curve"),
         });
     }
@@ -1563,7 +1557,7 @@ fn draw_temperature_history(model: &AppModel, cr: &cairo::Context, width: f64, h
     let palette = current_palette();
     let plot = draw_panel(cr, width, height);
     draw_grid(cr, plot);
-    draw_history_scale_labels(cr, plot, "C");
+    draw_history_scale_labels(cr, plot, "°C");
     draw_history_series(
         cr,
         plot,
@@ -1732,15 +1726,11 @@ fn handle_absolute(curve: &[CurvePoint], u: f64, v: f64) -> CurvePoint {
 }
 
 fn draw_panel(_cr: &cairo::Context, width: f64, height: f64) -> (f64, f64, f64, f64) {
-    let palette = current_palette();
-    _cr.set_source_rgb(palette.panel_fill.0, palette.panel_fill.1, palette.panel_fill.2);
-    _cr.rectangle(0.5, 0.5, width - 1.0, height - 1.0);
-    let _ = _cr.fill();
     plot_rect(width, height)
 }
 
 fn draw_grid(cr: &cairo::Context, plot: (f64, f64, f64, f64)) {
-    set_color(cr, current_palette().grid);
+    set_color(cr, style::graph_colors().grid);
     cr.set_line_width(0.8);
     for step in 1..4 {
         let x = plot.0 + plot.2 * (step as f64 / 4.0);
@@ -1755,12 +1745,12 @@ fn draw_grid(cr: &cairo::Context, plot: (f64, f64, f64, f64)) {
 
 fn draw_curve_scale_labels(cr: &cairo::Context, plot: (f64, f64, f64, f64)) {
     draw_label(cr, plot.0, plot.1 + 8.0, "100%", 9.0, 0.70);
-    draw_label(cr, plot.0, plot.1 + plot.3 - 2.0, "0 C", 9.0, 0.70);
+    draw_label(cr, plot.0, plot.1 + plot.3 - 2.0, "0 °C", 9.0, 0.70);
     draw_label(
         cr,
         plot.0 + plot.2 - 24.0,
         plot.1 + plot.3 - 2.0,
-        &format!("{} C", MAX_SOAK_TEMP_C),
+        &format!("{} °C", MAX_SOAK_TEMP_C),
         9.0,
         0.70,
     );
@@ -1772,7 +1762,7 @@ fn draw_wall_temperature(
     wall_x: f64,
     soak_temp_c: u8,
 ) {
-    let text = format!("{soak_temp_c} C");
+    let text = format!("{soak_temp_c} °C");
     let estimated_width = text.chars().count() as f64 * 5.5;
     let x = if wall_x + estimated_width + 6.0 <= plot.0 + plot.2 {
         wall_x + 6.0
@@ -1876,19 +1866,20 @@ fn rgb_to_hex(color: (f64, f64, f64)) -> String {
 }
 
 fn draw_label(cr: &cairo::Context, x: f64, y: f64, text: &str, _size: f64, _alpha: f64) {
-    let palette = current_palette();
+    let label = style::graph_colors().label;
     cr.select_font_face(
         "JetBrains Mono",
         cairo::FontSlant::Normal,
         cairo::FontWeight::Normal,
     );
-    cr.set_font_size(11.0);
-    cr.set_source_rgba(palette.label.0, palette.label.1, palette.label.2, 1.0);
+    cr.set_font_size(10.0);
+    cr.set_source_rgba(label.0, label.1, label.2, 1.0);
     cr.move_to(x, y);
     let _ = cr.show_text(text);
 }
 
 fn install_css() -> CssProvider {
+    style::install();
     let provider = CssProvider::new();
     provider.load_from_string(&build_css(current_palette()));
     if let Some(display) = gdk::Display::default() {
@@ -1908,7 +1899,7 @@ fn register_embedded_resources() {
 
 fn format_temp(value: Option<u8>) -> String {
     value
-        .map(|temp| format!("{temp} C"))
+        .map(|temp| format!("{temp} °C"))
         .unwrap_or_else(|| String::from("unavailable"))
 }
 
@@ -1934,88 +1925,54 @@ fn is_dark_theme() -> bool {
 
 fn build_css(palette: ThemePalette) -> String {
     format!(
-        "window, popover {{
-  background: {};
-  color: {};
-  font-family: \"JetBrains Mono\";
-  font-size: 11pt;
-  font-weight: 400;
-}}
-headerbar {{
-  background: @headerbar_bg_color;
-}}
-.top-strip button,
-.top-strip button label,
-entry,
-combobox {{
-  color: {};
-  font-size: 11pt;
-  font-weight: 400;
-}}
-.top-strip {{
+        ".top-strip {{
   border-spacing: 0;
 }}
 .panel-title {{
-  color: {};
-  font-size: 11pt;
-  font-weight: 400;
+  font-weight: 600;
+}}
+.toggle-chip,
+.preset-chip {{
+  background: transparent;
+  background-image: none;
+  color: {meta};
+  border: 1px solid {border};
+  border-radius: 8px;
+  box-shadow: none;
+  outline: none;
 }}
 .toggle-chip {{
   padding: 5px 10px;
-  background: transparent;
-  background-image: none;
-  color: {};
-  border: 1px solid {};
-  border-radius: 8px;
-  box-shadow: none;
-  outline: none;
-}}
-.toggle-chip:hover {{
-  background: {};
-}}
-.toggle-chip:checked {{
-  background: {};
-  color: {};
-  border-color: {};
 }}
 .preset-chip {{
   padding: 5px 8px;
-  background: transparent;
-  background-image: none;
-  color: {};
-  border: 1px solid {};
-  border-radius: 8px;
-  box-shadow: none;
-  outline: none;
 }}
+.toggle-chip:hover,
 .preset-chip:hover {{
-  background: {};
+  background: {hover};
 }}
+.toggle-chip:checked,
 .preset-chip:checked {{
-  background: {};
-  color: {};
-  border-color: {};
+  background: {checked};
+  color: {meta};
+  border-color: {checked_border};
 }}
-.toggle-chip label,
-.preset-chip label {{
-  font-weight: 400;
-}}
-.meta-text {{
-  color: {};
-  font-size: 11pt;
-}}
+.meta-text,
 .metric-key,
-.metric-value {{
-  color: {};
+.secondary-control > title > label,
+.footer-link,
+.footer-version {{
+  color: {meta};
 }}
-.metric-value {{
-  font-weight: 400;
+.metric-value,
+.details-text,
+.inline-input-entry,
+.inline-input-unit {{
+  font-family: \"JetBrains Mono\";
   font-feature-settings: \"tnum\" 1;
 }}
-.secondary-control > title,
-.secondary-control > title > label {{
-  color: {};
-  font-weight: 400;
+.details-text {{
+  line-height: 1.28;
 }}
 .inline-input {{
   background: transparent;
@@ -2036,39 +1993,12 @@ combobox {{
 combobox button {{
   background: transparent;
   background-image: none;
-}}
-.details-text {{
-  color: {};
-  font-family: \"JetBrains Mono\";
-  line-height: 1.28;
-}}
-.footer-link,
-.footer-version {{
-  color: {};
-  font-size: 11pt;
-  font-weight: 400;
 }}",
-        palette.window_bg,
-        palette.meta_fg,
-        palette.meta_fg,
-        palette.window_fg,
-        palette.meta_fg,
-        palette.chip_border,
-        palette.chip_hover_bg,
-        palette.chip_checked_bg,
-        palette.meta_fg,
-        palette.chip_checked_border,
-        palette.meta_fg,
-        palette.chip_border,
-        palette.chip_hover_bg,
-        palette.chip_checked_bg,
-        palette.meta_fg,
-        palette.chip_checked_border,
-        palette.meta_fg,
-        palette.meta_fg,
-        palette.meta_fg,
-        palette.meta_fg,
-        palette.meta_fg,
+        meta = palette.meta_fg,
+        border = palette.chip_border,
+        hover = palette.chip_hover_bg,
+        checked = palette.chip_checked_bg,
+        checked_border = palette.chip_checked_border,
     )
 }
 

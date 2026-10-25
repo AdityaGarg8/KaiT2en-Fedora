@@ -11,13 +11,19 @@ STATUS="/usr/local/libexec/t2-power-tune-status"
 SERVICE="/etc/systemd/system/kait2en-power-tune.service"
 
 def kait2en_brand():
-    pixbuf=GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    # White type for dark surfaces, dark type for light ones. Without the
+    # light file the white one is used.
+    dark=GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    try: light=GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+    except GLib.Error: light=dark
+    manager=Adw.StyleManager.get_default()
     brand=Gtk.DrawingArea(content_width=80,content_height=21)
     def draw(_area,context,width,height):
+        pixbuf=dark if manager.get_dark() else light
         scale=min(width/pixbuf.get_width(),height/pixbuf.get_height())
         context.save(); context.translate((width-pixbuf.get_width()*scale)/2,(height-pixbuf.get_height()*scale)/2)
         context.scale(scale,scale); Gdk.cairo_set_source_pixbuf(context,pixbuf,0,0); context.paint(); context.restore()
-    brand.set_draw_func(draw); brand.set_size_request(80,21); return brand
+    brand.set_draw_func(draw); brand.set_size_request(80,21); manager.connect("notify::dark",lambda *_:brand.queue_draw()); return brand
 
 SECTION_HELP={
     "PCIe ASPM candidates":("PCIe ASPM link states",
@@ -46,9 +52,9 @@ ACTION_HELP=("Actions",
     "Apply selected changes writes the currently chosen values for this boot and verifies them. Nothing is written merely by changing a checkbox.\n\nCreate or Update systemd service stores the same selection in kait2en-power-tune.service so it is restored at boot. Unselected managed values are removed from the service.\n\nRescan reads the current hardware state again. It does not apply settings, but hardware values such as LTR can change dynamically while devices are active.")
 
 def palette_css(dark):
-    if dark: window,fg,panel,shadow,line="#161616","#e8e8e8","#101010","rgba(0,0,0,0.32)","rgba(255,255,255,0.13)"
-    else: window,fg,panel,shadow,line="#f2f2f2","#242424","#e8e8e8","rgba(0,0,0,0.14)","rgba(0,0,0,0.16)"
-    return f"window,popover{{font-family:'JetBrains Mono';font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}button,button label,entry,spinbutton,dropdown{{font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}.app-background{{background:{window};color:alpha({fg},0.72);}}.app-background label{{font-size:11pt;font-weight:400;}}.app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-size:11pt;font-weight:400;}}.app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}.app-background headerbar{{background:@headerbar_bg_color;color:alpha({fg},0.72);}}.unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;}}.sticky-bar{{background:{panel};color:alpha({fg},0.72);padding:9px 18px;}}.sticky-top{{box-shadow:0 5px 12px {shadow};}}.sticky-bottom{{box-shadow:0 -5px 12px {shadow};}}.cstate-cell{{border:1px solid {line};border-radius:7px;padding:3px 6px;font-feature-settings:'tnum';}}.app-background .cstate-zero{{color:#808080;border-color:#808080;}}.app-background .cstate-positive{{color:#3b8132;border-color:#3b8132;}}.donate-link,.donate-link>label{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}"
+    if dark: window,fg,panel,line,rim,hairline="#151517","#e8e8e8","#0d0d0f","rgba(255,255,255,0.13)","rgba(255,255,255,0.24)","rgba(255,255,255,0.06)"
+    else: window,fg,panel,line,rim,hairline="#ffffff","#242424","#e2e2e8","rgba(0,0,0,0.16)","rgba(255,255,255,0.70)","rgba(0,0,0,0.08)"
+    return f"window{{color:alpha({fg},0.72);}}button,button label,entry,spinbutton,dropdown{{color:alpha({fg},0.72);}}.monospace{{font-family:'JetBrains Mono';}}window.csd{{border-top:1px solid {rim};}}window.csd.maximized,window.csd.tiled,window.csd.tiled-top,window.csd.tiled-left,window.csd.tiled-right,window.csd.tiled-bottom,window.csd.fullscreen{{border-top-width:0;}}.app-background{{background:{window};color:alpha({fg},0.72);}}.app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-weight:600;}}.app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);}}.app-background headerbar{{background:{window};color:alpha({fg},0.72);}}.unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;box-shadow:inset 0 0 0 1px {hairline};}}.sticky-bar{{padding:9px 18px;}}.cstate-cell{{border:1px solid {line};border-radius:7px;padding:3px 6px;font-family:'JetBrains Mono';font-feature-settings:'tnum';}}.app-background .cstate-zero{{color:#808080;border-color:#808080;}}.app-background .cstate-positive{{color:#3b8132;border-color:#3b8132;}}.donate-link,.donate-link>label{{color:alpha({fg},0.72);}}"
 
 class PowerTune(Adw.Application):
     def __init__(self):
@@ -62,7 +68,7 @@ class PowerTune(Adw.Application):
         root=Gtk.Box(orientation=Gtk.Orientation.VERTICAL); root.add_css_class("app-background")
         header=Adw.HeaderBar(); header.set_title_widget(Adw.WindowTitle(title="Power Tune",subtitle="PCIe ASPM and power tunables"))
         brand=kait2en_brand(); brand.set_margin_start(10); brand.set_margin_end(10); header.pack_start(brand); root.append(header)
-        metrics=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=8); metrics.add_css_class("sticky-bar"); metrics.add_css_class("sticky-top"); metrics.set_margin_bottom(8)
+        metrics=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=8); metrics.add_css_class("sticky-bar"); metrics.set_margin_bottom(8)
         title=Gtk.Label(label="Package C-states",xalign=0); title.add_css_class("heading"); metrics.append(title)
         self.cstate_values={}
         for state in ("C2","C3","C6","C7","C8","C9","C10"):
@@ -84,7 +90,7 @@ class PowerTune(Adw.Application):
         self.tunable_box=self.section(body,"Runtime power management")
         self.wakeup_box=self.section(body,"Wake sources")
         self.other_box=self.section(body,"Other power tunables")
-        footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6); footer.add_css_class("sticky-bar"); footer.add_css_class("sticky-bottom")
+        footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6); footer.add_css_class("sticky-bar")
         actions=Gtk.Box(spacing=8); self.apply_btn=Gtk.Button(label="Apply selected changes"); self.apply_btn.add_css_class("suggested-action")
         self.service_btn=Gtk.Button(); self.update_service_button(); self.rescan_btn=Gtk.Button(label="Rescan")
         for button in (self.apply_btn,self.service_btn,self.rescan_btn): actions.append(button)
@@ -98,7 +104,7 @@ class PowerTune(Adw.Application):
         self.notice=Gtk.Label(xalign=0,wrap=True); self.notice.add_css_class("dim-label"); footer.append(self.notice)
         root.append(footer)
         status=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=8)
-        status.set_margin_start(8); status.set_margin_end(8); status.set_margin_bottom(8)
+        status.set_margin_start(18); status.set_margin_end(18); status.set_margin_bottom(8)
         donate=Gtk.LinkButton(uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",label="Fund our bugs")
         donate.add_css_class("donate-link"); status.append(donate)
         status.append(Gtk.Box(hexpand=True))

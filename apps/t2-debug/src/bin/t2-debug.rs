@@ -129,8 +129,8 @@ fn build_ui(app: &adw::Application) {
     stack.add_titled(&log.root, Some("logs"), "live log");
 
     let footer = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-    footer.set_margin_start(12);
-    footer.set_margin_end(12);
+    footer.set_margin_start(18);
+    footer.set_margin_end(18);
     footer.set_margin_top(6);
     footer.set_margin_bottom(6);
     let donate = gtk4::LinkButton::builder()
@@ -152,7 +152,7 @@ fn build_ui(app: &adw::Application) {
 
     let window = adw::ApplicationWindow::new(app);
     window.set_title(Some("T2 Debug"));
-    window.set_default_size(1100, 760);
+    window.set_default_size(1112, 760);
     window.set_content(Some(&root));
 
     // One long-lived connection for the whole app; the visible tab just picks
@@ -236,8 +236,8 @@ struct DeviceTab {
 
 fn build_device_tab() -> DeviceTab {
     let root = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
-    root.set_margin_start(12);
-    root.set_margin_end(12);
+    root.set_margin_start(18);
+    root.set_margin_end(18);
     root.set_margin_top(12);
     root.set_margin_bottom(12);
 
@@ -492,8 +492,8 @@ struct LogTab {
 
 fn build_log_tab() -> LogTab {
     let root = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-    root.set_margin_start(12);
-    root.set_margin_end(12);
+    root.set_margin_start(18);
+    root.set_margin_end(18);
     root.set_margin_top(12);
     root.set_margin_bottom(12);
 
@@ -819,9 +819,14 @@ fn kait2en_brand() -> gtk4::DrawingArea {
     brand.set_content_width(80);
     brand.set_content_height(21);
     brand.set_size_request(80, 21);
+    // White type for dark surfaces, dark type for light ones. Without the
+    // light file the white one is used.
     let pixbuf = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png");
-    if let Ok(pixbuf) = pixbuf {
+    if let Ok(dark) = pixbuf {
+        let light = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+            .unwrap_or_else(|_| dark.clone());
         brand.set_draw_func(move |_area, context, width, height| {
+            let pixbuf = if adw::StyleManager::default().is_dark() { &dark } else { &light };
             let scale = f64::min(
                 width as f64 / pixbuf.width() as f64,
                 height as f64 / pixbuf.height() as f64,
@@ -835,6 +840,12 @@ fn kait2en_brand() -> gtk4::DrawingArea {
             context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
             let _ = context.paint();
             let _ = context.restore();
+        });
+        let weak = brand.downgrade();
+        adw::StyleManager::default().connect_dark_notify(move |_| {
+            if let Some(brand) = weak.upgrade() {
+                brand.queue_draw();
+            }
         });
     }
     brand
@@ -858,29 +869,36 @@ fn install_palette() {
 
 fn palette_css(dark: bool) -> String {
     let (window_bg, window_fg, box_bg) = if dark {
-        ("#161616", "#e8e8e8", "#101010")
+        ("#151517", "#e8e8e8", "#0d0d0f")
     } else {
-        ("#f2f2f2", "#242424", "#e8e8e8")
+        ("#ffffff", "#242424", "#e2e2e8")
+    };
+    let (rim, line) = if dark {
+        ("rgba(255,255,255,0.24)", "rgba(255,255,255,0.06)")
+    } else {
+        ("rgba(255,255,255,0.70)", "rgba(0,0,0,0.08)")
     };
     format!(
-        "window, popover, .debug-root, .debug-root headerbar {{
+        "window, .debug-root, headerbar {{
              background: {window_bg};
              color: alpha({window_fg}, 0.72);
-             font-family: 'JetBrains Mono';
-             font-size: 11pt;
-             font-weight: 400;
          }}
-         button, button label, entry, textview, textview text {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
-         .title-1, .title-2, .heading, windowtitle .title {{ color: {window_fg}; font-size: 11pt; font-weight: 400; }}
+         button, button label, entry, textview, textview text {{ color: alpha({window_fg}, 0.72); }}
+         textview, textview text {{ font-family: 'JetBrains Mono'; }}
+         .title-1, .title-2, .heading, windowtitle .title {{ color: {window_fg}; font-weight: 600; }}
          .dim-label, windowtitle .subtitle {{ color: alpha({window_fg}, 0.72); }}
+         window.csd {{ border-top: 1px solid {rim}; }}
+         window.csd.maximized, window.csd.tiled, window.csd.tiled-top, window.csd.tiled-left,
+         window.csd.tiled-right, window.csd.tiled-bottom, window.csd.fullscreen {{ border-top-width: 0; }}
          .debug-panel {{
              background: {box_bg};
              color: alpha({window_fg}, 0.72);
              border: none;
              border-radius: 12px;
+             box-shadow: inset 0 0 0 1px {line};
          }}
          .debug-panel text {{ background: {box_bg}; }}
-         .overview-value {{ font-feature-settings: 'tnum'; }}
+         .overview-value {{ font-family: 'JetBrains Mono'; font-feature-settings: 'tnum'; }}
          .donate-link, .donate-link > label {{ color: alpha({window_fg}, 0.72); }}"
     )
 }

@@ -9,6 +9,7 @@ use gtk4::{
 use crate::{
     plimit::PLimits,
     sensors::{Applied, SmcSensors},
+    style,
     sysfs::{find_t2smc, glob_paths, read_string},
 };
 
@@ -17,64 +18,60 @@ const APP_VERSION: &str = "0.03";
 const HISTORY_CAPACITY: usize = 90;
 
 fn kait2en_brand() -> DrawingArea {
-    let pixbuf = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    // White type for dark surfaces, dark type for light ones. Without the
+    // light file the white one is used.
+    let dark = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
         .expect("failed to load kait2en wordmark");
+    let light = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+        .unwrap_or_else(|_| dark.clone());
     let brand = DrawingArea::new();
     brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
     brand.set_draw_func(move |_area, context, width, height| {
+        let pixbuf = if adw::StyleManager::default().is_dark() { &dark } else { &light };
         let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
         let _ = context.save();
         context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
         context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
         let _ = context.paint(); let _ = context.restore();
     });
+    let weak = brand.downgrade();
+    adw::StyleManager::default().connect_dark_notify(move |_| {
+        if let Some(brand) = weak.upgrade() {
+            brand.queue_draw();
+        }
+    });
     brand
 }
 
 #[derive(Clone, Copy)]
 struct ThemePalette {
-    window_bg: &'static str,
-    window_fg: &'static str,
     meta_fg: &'static str,
-    panel_fill: (f64, f64, f64),
-    grid: (f64, f64, f64),
     heatpipe: (f64, f64, f64),
     cpu: (f64, f64, f64),
     gpu: (f64, f64, f64),
     idle: (f64, f64, f64),
     fin: (f64, f64, f64),
     igpu: (f64, f64, f64),
-    label: (f64, f64, f64),
 }
 
 const DARK_PALETTE: ThemePalette = ThemePalette {
-    window_bg: "#161616",
-    window_fg: "#e8e8e8",
     meta_fg: "rgba(230,230,230,0.62)",
-    panel_fill: (0.063, 0.063, 0.063),
-    grid: (0.28, 0.30, 0.32),
     heatpipe: (0.68, 0.82, 0.42),
     cpu: (0.92, 0.54, 0.28),
     gpu: (0.34, 0.60, 0.86),
     idle: (0.90, 0.28, 0.22),
     fin: (0.78, 0.52, 0.88),
     igpu: (0.40, 0.78, 0.72),
-    label: (0.56, 0.56, 0.56),
 };
 
 const LIGHT_PALETTE: ThemePalette = ThemePalette {
-    window_bg: "#f2f2f2",
-    window_fg: "#242424",
     meta_fg: "rgba(36,36,36,0.68)",
-    panel_fill: (0.91, 0.91, 0.91),
-    grid: (0.72, 0.72, 0.72),
     heatpipe: (0.42, 0.62, 0.18),
     cpu: (0.86, 0.43, 0.18),
     gpu: (0.20, 0.45, 0.75),
     idle: (0.80, 0.18, 0.14),
     fin: (0.55, 0.30, 0.68),
     igpu: (0.15, 0.55, 0.50),
-    label: (0.096, 0.096, 0.096),
 };
 
 /// One second of SMC zones and applied limits
@@ -232,16 +229,13 @@ fn build_ui(app: &Application) {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("T2 Zone Power")
-        .default_width(480)
+        .default_width(480 + 2 * (style::SIDE_MARGIN - 8))
         .default_height(880)
         .build();
     window.set_resizable(true);
 
     let root = GtkBox::new(Orientation::Vertical, 8);
-    root.set_margin_top(8);
-    root.set_margin_bottom(8);
-    root.set_margin_start(8);
-    root.set_margin_end(8);
+    style::pad(&root);
 
     let header = adw::HeaderBar::new();
     header.set_title_widget(Some(&adw::WindowTitle::new("Zone Power", "")));
@@ -519,12 +513,12 @@ fn has_dgpu() -> bool {
 }
 
 fn panel(title: &str, widget: &impl IsA<gtk4::Widget>, legend: &str) -> GtkBox {
-    let box_ = GtkBox::new(Orientation::Vertical, 3);
+    let box_ = GtkBox::new(Orientation::Vertical, 6);
     let label = Label::new(Some(title));
     label.set_halign(Align::Start);
     label.add_css_class("panel-title");
     box_.append(&label);
-    box_.append(widget);
+    box_.append(&style::card(widget));
     let legend_label = Label::new(None);
     legend_label.set_halign(Align::Start);
     legend_label.set_xalign(0.0);
@@ -563,10 +557,10 @@ fn attach_meter_row(grid: &Grid, row: i32, name: &str, cells: &MeterRow) {
 
 /// A rounded bar: a muted trough with a filled portion coloured by severity
 fn draw_meter(cr: &cairo::Context, width: f64, height: f64, meter: Option<Meter>) {
-    let palette = current_palette();
+    let trough = style::graph_colors().grid;
     let radius = height / 2.0;
     rounded_rect(cr, 0.5, 0.5, width - 1.0, height - 1.0, radius);
-    cr.set_source_rgba(palette.grid.0, palette.grid.1, palette.grid.2, 0.35);
+    cr.set_source_rgb(trough.0, trough.1, trough.2);
     let _ = cr.fill();
 
     let Some(meter) = meter else { return };
@@ -607,13 +601,9 @@ fn lerp_color(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64)
     (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
 }
 
-/// Fills the panel, draws the grid and returns the plot area. Every graph
+/// Draws the grid and returns the plot area. Every graph
 /// runs from 0 to 100 in its unit.
 fn draw_history_panel(cr: &cairo::Context, width: f64, height: f64, unit: &str) -> (f64, f64, f64, f64) {
-    let palette = current_palette();
-    cr.set_source_rgb(palette.panel_fill.0, palette.panel_fill.1, palette.panel_fill.2);
-    cr.rectangle(0.5, 0.5, width - 1.0, height - 1.0);
-    let _ = cr.fill();
     let plot = plot_rect(width, height);
     draw_grid(cr, plot);
     draw_label(cr, plot.0, plot.1 + 8.0, &format!("100{unit}"));
@@ -622,7 +612,7 @@ fn draw_history_panel(cr: &cairo::Context, width: f64, height: f64, unit: &str) 
 }
 
 fn draw_grid(cr: &cairo::Context, plot: (f64, f64, f64, f64)) {
-    set_color(cr, current_palette().grid);
+    set_color(cr, style::graph_colors().grid);
     cr.set_line_width(0.8);
     for step in 1..4 {
         let x = plot.0 + plot.2 * (step as f64 / 4.0);
@@ -745,7 +735,7 @@ fn legend_markup(legend: &str) -> String {
                 "Forced idle" => palette.idle,
                 "iGPU clock" => palette.igpu,
                 "Fin stack" => palette.fin,
-                _ => palette.label,
+                _ => style::graph_colors().label,
             };
             format!("<span foreground=\"{}\">●</span> {}", rgb_to_hex(dot), glib::markup_escape_text(item))
         })
@@ -763,15 +753,16 @@ fn rgb_to_hex(color: (f64, f64, f64)) -> String {
 }
 
 fn draw_label(cr: &cairo::Context, x: f64, y: f64, text: &str) {
-    let palette = current_palette();
+    let label = style::graph_colors().label;
     cr.select_font_face("JetBrains Mono", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
-    cr.set_font_size(11.0);
-    cr.set_source_rgba(palette.label.0, palette.label.1, palette.label.2, 1.0);
+    cr.set_font_size(10.0);
+    cr.set_source_rgba(label.0, label.1, label.2, 1.0);
     cr.move_to(x, y);
     let _ = cr.show_text(text);
 }
 
 fn install_css() -> CssProvider {
+    style::install();
     let provider = CssProvider::new();
     provider.load_from_string(&build_css(current_palette()));
     if let Some(display) = gdk::Display::default() {
@@ -790,48 +781,23 @@ fn current_palette() -> ThemePalette {
 
 fn build_css(palette: ThemePalette) -> String {
     format!(
-        "window, popover {{
-  background: {};
-  color: {};
-  font-family: \"JetBrains Mono\";
-  font-size: 11pt;
-  font-weight: 400;
+        ".panel-title {{
+  font-weight: 600;
 }}
-headerbar {{
-  background: @headerbar_bg_color;
-}}
-.panel-title {{
-  color: {};
-  font-size: 11pt;
-  font-weight: 400;
-}}
-.meta-text {{
-  color: {};
-  font-size: 11pt;
-}}
+.meta-text,
 .metric-key,
-.metric-value {{
-  color: {};
-}}
-.metric-value {{
-  font-weight: 400;
-  font-feature-settings: \"tnum\" 1;
-}}
 .footer-link,
 .footer-version {{
-  color: {};
-  font-size: 11pt;
-  font-weight: 400;
+  color: {meta};
+}}
+.metric-value {{
+  font-family: \"JetBrains Mono\";
+  font-feature-settings: \"tnum\" 1;
 }}
 .over-budget {{
   color: @warning_color;
 }}",
-        palette.window_bg,
-        palette.meta_fg,
-        palette.window_fg,
-        palette.meta_fg,
-        palette.meta_fg,
-        palette.meta_fg,
+        meta = palette.meta_fg,
     )
 }
 

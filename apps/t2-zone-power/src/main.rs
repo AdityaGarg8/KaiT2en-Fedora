@@ -4,6 +4,7 @@ mod error;
 mod gui;
 mod plimit;
 mod sensors;
+mod style;
 mod sysfs;
 
 use gtk4::glib;

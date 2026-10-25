@@ -9,12 +9,13 @@ require_fedora
 BRANDING_SRC="$REPO_ROOT/assets/gdm/00-kait2en"
 LOGO_SRC="$REPO_ROOT/assets/gdm/kait2en-gdm-logo.png"
 BACKGROUND_SRC="$REPO_ROOT/assets/gdm/gdm-black.png"
+THEME_CSS_SRC="$REPO_ROOT/assets/gdm/kait2en-gdm.css"
 BRANDING_DST=/etc/dconf/db/gdm.d/00-kait2en
 LOGO_DST=/usr/share/pixmaps/kait2en-gdm-logo.png
 BACKGROUND_DST=/usr/share/backgrounds/kait2en/gdm-black.png
 
 missing_requirements=()
-for command_name in dconf glib-compile-resources gresource install mktemp readlink rm; do
+for command_name in cat dconf glib-compile-resources gresource install mktemp readlink rm sed; do
 	command -v "$command_name" >/dev/null 2>&1 ||
 		missing_requirements+=("command $command_name")
 done
@@ -22,6 +23,7 @@ done
 [[ -r "$BRANDING_SRC" ]] || missing_requirements+=("asset 00-kait2en")
 [[ -r "$LOGO_SRC" ]] || missing_requirements+=("asset kait2en-gdm-logo.png")
 [[ -r "$BACKGROUND_SRC" ]] || missing_requirements+=("asset gdm-black.png")
+[[ -r "$THEME_CSS_SRC" ]] || missing_requirements+=("asset kait2en-gdm.css")
 
 if (( ${#missing_requirements[@]} > 0 )); then
 	warn "skipping GDM branding; missing: ${missing_requirements[*]}"
@@ -51,11 +53,13 @@ patch_gnome_shell_theme() {
 	done < <(gresource list "$theme_resource")
 	printf '%s\n' '  </gresource>' '</gresources>' >>"$manifest"
 
+	# Earlier KaiT2en additions sit at the end of the theme, so they are cut
+	# off and the current stylesheet is appended once.
 	for css_file in "$work"/gnome-shell-*.css; do
 		[[ -f "$css_file" ]] || continue
-		if ! grep -Fq 'KaiT2en GDM background' "$css_file"; then
-			printf '\n/* KaiT2en GDM background */\n#lockDialogGroup, .login-dialog {\n  background-color: #000000;\n  background-image: none;\n}\n' >>"$css_file"
-		fi
+		sed -i '/^\/\* KaiT2en GDM/,$d' "$css_file"
+		printf '\n' >>"$css_file"
+		cat "$THEME_CSS_SRC" >>"$css_file"
 	done
 
 	if ! glib-compile-resources "$manifest" \

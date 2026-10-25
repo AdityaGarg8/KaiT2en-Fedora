@@ -1,0 +1,62 @@
+/* KaiT2en GDM, appended to the GNOME Shell theme by install-gdm-branding.sh.
+ * The login screen runs without the KaiT2en Vornehm extension, so its
+ * glass surfaces and chrome rim are copied here.
+ */
+#lockDialogGroup, .login-dialog {
+  background-color: #000000;
+  background-image: none;
+}
+
+/* Password entry, user list, auth list and round buttons */
+.login-dialog .login-dialog-prompt-entry,
+.unlock-dialog .login-dialog-prompt-entry,
+.login-dialog-user-list-view .login-dialog-user-list .login-dialog-user-list-item,
+.login-dialog .login-dialog-auth-list-item,
+.login-dialog-button.a11y-button,
+.login-dialog-button.cancel-button,
+.login-dialog-button.switch-user-button,
+.login-dialog-button.login-dialog-session-list-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(44, 44, 48, 0.78);
+  background-gradient-end: rgba(14, 14, 16, 0.78);
+  box-shadow: inset 0 0.75px 0 0 rgba(255, 255, 255, 0.30);
+}
+
+.login-dialog .login-dialog-prompt-entry:hover,
+.unlock-dialog .login-dialog-prompt-entry:hover,
+.login-dialog-user-list-view .login-dialog-user-list .login-dialog-user-list-item:hover,
+.login-dialog .login-dialog-auth-list-item:hover,
+.login-dialog-button.a11y-button:hover,
+.login-dialog-button.cancel-button:hover,
+.login-dialog-button.switch-user-button:hover,
+.login-dialog-button.login-dialog-session-list-button:hover {
+  background-gradient-start: rgba(56, 56, 60, 0.82);
+  background-gradient-end: rgba(20, 20, 22, 0.82);
+}
+
+/* The focused item shows a brighter rim instead of an accent fill */
+.login-dialog .login-dialog-prompt-entry:focus,
+.unlock-dialog .login-dialog-prompt-entry:focus,
+.login-dialog-user-list-view .login-dialog-user-list .login-dialog-user-list-item:focus,
+.login-dialog-user-list-view .login-dialog-user-list .login-dialog-user-list-item:selected,
+.login-dialog .login-dialog-auth-list-item:focus,
+.login-dialog .login-dialog-auth-list-item:selected,
+.login-dialog-button.a11y-button:focus,
+.login-dialog-button.cancel-button:focus,
+.login-dialog-button.switch-user-button:focus,
+.login-dialog-button.login-dialog-session-list-button:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  background-gradient-start: rgba(56, 56, 60, 0.82);
+  background-gradient-end: rgba(20, 20, 22, 0.82);
+}
+
+.login-dialog-button.a11y-button:active,
+.login-dialog-button.cancel-button:active,
+.login-dialog-button.switch-user-button:active,
+.login-dialog-button.login-dialog-session-list-button:active,
+.login-dialog-button.a11y-button:checked,
+.login-dialog-button.login-dialog-session-list-button:checked {
+  background-gradient-start: rgba(68, 68, 72, 0.86);
+  background-gradient-end: rgba(26, 26, 28, 0.86);
+}

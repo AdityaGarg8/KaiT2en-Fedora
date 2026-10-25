@@ -14,40 +14,58 @@ const EFI_VAR: &str =
     "/sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9";
 
 fn kait2en_brand() -> gtk::DrawingArea {
-    let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    // White type for dark surfaces, dark type for light ones. Without the
+    // light file the white one is used.
+    let dark = gtk::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
         .expect("failed to load kait2en wordmark");
+    let light = gtk::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark-light.png")
+        .unwrap_or_else(|_| dark.clone());
     let brand = gtk::DrawingArea::new();
     brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
     brand.set_draw_func(move |_area, context, width, height| {
+        let pixbuf = if adw::StyleManager::default().is_dark() { &dark } else { &light };
         let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
         let _ = context.save();
         context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
         context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
         let _ = context.paint(); let _ = context.restore();
     });
+    let weak = brand.downgrade();
+    adw::StyleManager::default().connect_dark_notify(move |_| {
+        if let Some(brand) = weak.upgrade() {
+            brand.queue_draw();
+        }
+    });
     brand
 }
 
 fn palette_css(dark: bool) -> String {
     let (window_bg, window_fg, box_bg) = if dark {
-        ("#161616", "#e8e8e8", "#101010")
+        ("#151517", "#e8e8e8", "#0d0d0f")
     } else {
-        ("#f2f2f2", "#242424", "#e8e8e8")
+        ("#ffffff", "#242424", "#e2e2e8")
+    };
+    let (rim, line) = if dark {
+        ("rgba(255,255,255,0.24)", "rgba(255,255,255,0.06)")
+    } else {
+        ("rgba(255,255,255,0.70)", "rgba(0,0,0,0.08)")
     };
     format!(
-        "window, preferencespage, headerbar, popover {{ background: {window_bg}; color: alpha({window_fg}, 0.72); font-family: 'JetBrains Mono'; font-size: 11pt; font-weight: 400; }}
-         button, button label, entry, spinbutton, dropdown {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
-         .title-1, .title-2, .title-3, .title-4, .title, .heading, windowtitle .title {{ color: {window_fg}; font-size: 11pt; font-weight: 400; }}
-         .dim-label, windowtitle .subtitle {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
-         headerbar {{ background: @headerbar_bg_color; }}
+        "window, preferencespage, headerbar {{ background: {window_bg}; color: alpha({window_fg}, 0.72); }}
+         button, button label, entry, spinbutton, dropdown {{ color: alpha({window_fg}, 0.72); }}
+         .title-1, .title-2, .title-3, .title-4, .title, .heading, windowtitle .title {{ color: {window_fg}; font-weight: 600; }}
+         .dim-label, windowtitle .subtitle {{ color: alpha({window_fg}, 0.72); }}
+         window.csd {{ border-top: 1px solid {rim}; }}
+         window.csd.maximized, window.csd.tiled, window.csd.tiled-top, window.csd.tiled-left,
+         window.csd.tiled-right, window.csd.tiled-bottom, window.csd.fullscreen {{ border-top-width: 0; }}
          .boxed-list {{
              background: {box_bg};
              border: none;
              border-radius: 12px;
-             box-shadow: none;
+             box-shadow: inset 0 0 0 1px {line};
          }}
          .boxed-list row {{ background: {box_bg}; color: alpha({window_fg}, 0.72); }}
-         .donate-link, .donate-link > label {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}"
+         .donate-link, .donate-link > label {{ color: alpha({window_fg}, 0.72); }}"
     )
 }
 
@@ -365,7 +383,7 @@ fn build_ui(app: &adw::Application) {
 
     content.append(&page);
     let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8);
+    footer.set_margin_start(18); footer.set_margin_end(18); footer.set_margin_bottom(8);
     let donate = gtk::LinkButton::builder().uri("https://donate.stripe.com/eVq14n8a7agh2lQdqq14400").label("Fund our bugs").build();
     donate.add_css_class("donate-link"); footer.append(&donate);
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0); spacer.set_hexpand(true); footer.append(&spacer);

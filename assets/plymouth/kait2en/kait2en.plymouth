@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=KaiT2en
-Description=macOS-style KaiT2en boot splash
+Description=KaiT2en boot splash in the KaiT2en Vornehm style
 ModuleName=script
 
 [script]

@@ -147,6 +147,9 @@ install_app_assets() {
 	install -o root -g root -m 0644 \
 		"$REPO_ROOT/assets/kait2en-app-logo.png" \
 		/usr/local/share/kait2en/kait2en-wordmark.png
+	install -o root -g root -m 0644 \
+		"$REPO_ROOT/assets/kait2en-app-logo-light.png" \
+		/usr/local/share/kait2en/kait2en-wordmark-light.png
 	install_kait2en_fonts
 }
 run_step "install app assets" install_app_assets

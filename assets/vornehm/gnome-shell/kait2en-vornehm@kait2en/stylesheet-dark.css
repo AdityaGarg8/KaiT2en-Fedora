@@ -1,0 +1,271 @@
+/* KaiT2en Vornehm for GNOME Shell, dark variant.
+ * Surfaces match the GTK palette, every floating element has a hairline.
+ */
+
+/* Top bar shows the blurred wallpaper through a light tint */
+#panel {
+  background-color: rgba(0, 0, 0, 0.18);
+  font-weight: 500;
+}
+
+#panel .panel-button {
+  font-weight: 500;
+}
+
+#panel .panel-button.clock-display .clock {
+  font-weight: 600;
+}
+
+/* Menus and popovers */
+.popup-menu-content {
+  background-color: #2a2a2e;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.45);
+}
+
+.popup-menu-item {
+  border-radius: 9px;
+}
+
+.popup-separator-menu-item .popup-separator-menu-item-separator {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.quick-settings {
+  padding: 14px;
+  border-radius: 26px;
+}
+
+.datemenu-popover {
+  border-radius: 26px;
+}
+
+/* Notifications, calendar cards and quick toggle menus */
+.message, .events-button,
+.world-clocks-button,
+.weather-button {
+  background-color: #35353a;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.message:hover, .events-button:hover,
+.world-clocks-button:hover,
+.weather-button:hover {
+  background-color: #3c3c41;
+}
+
+.message:active, .events-button:active,
+.world-clocks-button:active,
+.weather-button:active {
+  background-color: #44444a;
+}
+
+.message:second-in-stack {
+  background-color: #2f2f34;
+}
+
+.message:lower-in-stack {
+  background-color: #2b2b30;
+}
+
+.notification-banner {
+  border-radius: 18px;
+  box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.40);
+}
+
+/* Dialogs, switcher and OSD */
+.modal-dialog {
+  background-color: #2a2a2e;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 22px;
+  box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.50);
+}
+
+.switcher-list {
+  background-color: rgba(42, 42, 46, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 24px;
+  box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.45);
+}
+
+.osd-window {
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.40);
+}
+
+/* Overview */
+#dash .dash-background {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 6px;
+  padding-right: 6px;
+  margin-bottom: 7px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(44, 44, 48, 0.78);
+  background-gradient-end: rgba(14, 14, 16, 0.78);
+  box-shadow: inset 0 0.75px 0 0 rgba(255, 255, 255, 0.30);
+}
+
+/* Slim shelf with tight icons like the reference dock */
+#dash .dash-item-container .show-apps,
+#dash .dash-item-container .overview-tile,
+#dash .dash-item-container .grid-search-result {
+  margin: 0 1px;
+  padding: 2px;
+  padding-bottom: 6px;
+}
+
+#dash .dash-item-container .show-apps .overview-icon,
+#dash .dash-item-container .overview-tile .overview-icon,
+#dash .dash-item-container .grid-search-result .overview-icon {
+  padding: 4px;
+  border-radius: 12px;
+}
+
+#dash .dash-item-container .app-grid-running-dot {
+  offset-y: -1px;
+}
+
+/* Icons sit directly on the glass shelf without their own tile, the
+ * lift is the hover feedback */
+#dash .dash-item-container .show-apps .overview-icon,
+#dash .dash-item-container .overview-tile .overview-icon,
+#dash .dash-item-container .grid-search-result .overview-icon {
+  background-color: transparent;
+}
+
+#dash .dash-item-container .show-apps:hover .overview-icon,
+#dash .dash-item-container .overview-tile:hover .overview-icon,
+#dash .dash-item-container .grid-search-result:hover .overview-icon {
+  background-color: transparent;
+}
+
+#dash .dash-item-container .show-apps:active .overview-icon,
+#dash .dash-item-container .overview-tile:active .overview-icon,
+#dash .dash-item-container .grid-search-result:active .overview-icon,
+#dash .dash-item-container .show-apps:checked .overview-icon,
+#dash .dash-item-container .overview-tile:checked .overview-icon,
+#dash .dash-item-container .grid-search-result:checked .overview-icon {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+#dash .dash-separator {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.workspace-background {
+  box-shadow: 0 12px 36px 4px rgba(0, 0, 0, 0.45);
+}
+
+
+/* Overview controls float as glass over the wallpaper, with the same
+ * chrome rim as the dock */
+.search-entry,
+.search-section-content {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(44, 44, 48, 0.78);
+  background-gradient-end: rgba(14, 14, 16, 0.78);
+  box-shadow: inset 0 0.75px 0 0 rgba(255, 255, 255, 0.30);
+}
+
+.search-entry {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.search-entry:hover,
+.search-entry:focus {
+  background-gradient-start: rgba(56, 56, 60, 0.82);
+  background-gradient-end: rgba(20, 20, 22, 0.82);
+  color: #ffffff;
+}
+
+.search-entry StLabel.hint-text {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Folders in the app grid and the open folder are glass like the dock */
+.app-folder,
+.app-folder-dialog {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(44, 44, 48, 0.78);
+  background-gradient-end: rgba(14, 14, 16, 0.78);
+  box-shadow: inset 0 0.75px 0 0 rgba(255, 255, 255, 0.30);
+}
+
+.app-folder:hover {
+  background-gradient-start: rgba(56, 56, 60, 0.82);
+  background-gradient-end: rgba(20, 20, 22, 0.82);
+}
+
+.app-folder:active {
+  background-gradient-start: rgba(68, 68, 72, 0.86);
+  background-gradient-end: rgba(26, 26, 28, 0.86);
+}
+
+.page-navigation-arrow {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.page-navigation-arrow:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.page-navigation-arrow:active {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Menus, dialogs and notification banners sit on live glass drawn by
+ * GlassSurface in extension.js */
+.popup-menu-content,
+.modal-dialog,
+.notification-banner {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(34, 34, 38, 0.55);
+  background-gradient-end: rgba(12, 12, 14, 0.62);
+  box-shadow: inset 0 0.75px 0 0 rgba(255, 255, 255, 0.30);
+}
+
+.popup-menu-content.quick-settings,
+.popup-menu-content.datemenu-popover {
+  border-radius: 26px;
+}
+
+/* Without glass behind them these keep the look nearly opaque */
+.switcher-list,
+.osd-window,
+.workspace-switcher,
+.resize-popup,
+.candidate-popup-content {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(34, 34, 38, 0.94);
+  background-gradient-end: rgba(12, 12, 14, 0.96);
+  box-shadow: inset 0 0.75px 0 0 rgba(255, 255, 255, 0.30);
+}
+
+.candidate-popup-content {
+  border-radius: 16px;
+}
+
+/* Quick toggle menus open inside the glass of the quick settings */
+.quick-toggle-menu {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.quick-toggle-menu:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+
+.quick-toggle-menu:active {
+  background-color: rgba(255, 255, 255, 0.14);
+}

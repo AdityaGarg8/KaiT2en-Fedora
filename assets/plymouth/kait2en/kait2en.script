@@ -1,4 +1,4 @@
-# macOS-style KaiT2en boot splash.
+# KaiT2en boot splash in the KaiT2en Vornehm style.
 #
 # plymouthd runs with DeviceScale=1 (see install-plymouth-theme.sh), so the
 # window is measured in physical pixels. Every element is sized relative to
@@ -16,20 +16,13 @@ boot.design_size = 116;
 
 progress_box.source_image = Image("progress_box.png");
 progress_bar.source_image = Image("progress_bar.png");
-progress_box.design_w = 100;
+progress_box.design_w = 200;
 progress_box.design_h = 4;
 progress_value = 0;
-
-kait2en.source_image = Image("watermark.png");
-kait2en.design_w = 90;
-kait2en.design_h = 24;
-kait2en.design_margin = 24;
 
 boot.sprite = Sprite();
 progress_box.sprite = Sprite();
 progress_bar.sprite = Sprite();
-kait2en.sprite = Sprite();
-kait2en.sprite.SetOpacity(0.55);
 
 message.sprite = Sprite();
 message.text = "";
@@ -85,9 +78,6 @@ fun scale_images()
   progress_bar.full_image = scaled(progress_bar.source_image, progress_box.design_w, progress_box.design_h);
   update_progress_bar();
 
-  kait2en.image = scaled(kait2en.source_image, kait2en.design_w, kait2en.design_h);
-  kait2en.sprite.SetImage(kait2en.image);
-
   if (dialog.box_sprite)
   {
     dialog.box_image = scaled(dialog.box_source_image, 145, 39);
@@ -124,7 +114,8 @@ fun update_layout()
 
   scale_images();
 
-  # Match Apple's startup composition: centered logo, low progress bar.
+  # Apple's startup composition with the KaiT2en kanji in place of the
+  # logo: centered mark, low progress bar, nothing else on screen.
   boot.x = win_x + win_w / 2 - boot.image.GetWidth() / 2;
   boot.y = win_y + win_h * 0.5 - boot.image.GetHeight() / 2;
   boot.sprite.SetPosition(boot.x, boot.y, 10);
@@ -134,11 +125,6 @@ fun update_layout()
   progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 10);
 
   progress_bar.sprite.SetPosition(progress_box.x, progress_box.y, 11);
-
-  margin = kait2en.design_margin * ratio;
-  kait2en.x = win_x + win_w - kait2en.image.GetWidth() - margin;
-  kait2en.y = win_y + win_h - kait2en.image.GetHeight() - margin;
-  kait2en.sprite.SetPosition(kait2en.x, kait2en.y, 10);
 
   if (dialog.box_sprite)
   {

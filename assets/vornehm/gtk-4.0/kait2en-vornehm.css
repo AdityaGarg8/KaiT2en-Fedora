@@ -1,0 +1,310 @@
+/* KaiT2en Vornehm for GTK4 and libadwaita.
+ * Clear surface hierarchy, hairlines and soft window shadows.
+ * Loaded through the user gtk.css, the accent color stays the user's.
+ */
+
+/* Light surfaces */
+@define-color window_bg_color #f2f2f5;
+@define-color view_bg_color #ffffff;
+@define-color headerbar_bg_color #f2f2f5;
+@define-color headerbar_backdrop_color #f6f6f8;
+@define-color headerbar_shade_color RGB(0 0 0 / 10%);
+@define-color headerbar_darker_shade_color RGB(0 0 0 / 16%);
+@define-color sidebar_bg_color #e2e2e8;
+@define-color sidebar_backdrop_color #eaeaee;
+@define-color sidebar_border_color RGB(0 0 0 / 12%);
+@define-color sidebar_shade_color RGB(0 0 0 / 7%);
+@define-color secondary_sidebar_bg_color #ebebef;
+@define-color secondary_sidebar_backdrop_color #f0f0f3;
+@define-color secondary_sidebar_border_color RGB(0 0 0 / 12%);
+@define-color card_bg_color #ffffff;
+@define-color card_shade_color RGB(0 0 0 / 9%);
+@define-color dialog_bg_color #f2f2f5;
+@define-color popover_bg_color #ffffff;
+@define-color popover_shade_color RGB(0 0 0 / 10%);
+@define-color thumbnail_bg_color #ffffff;
+@define-color shade_color RGB(0 0 0 / 8%);
+
+/* Dark surfaces step up clearly from content to popover */
+@media (prefers-color-scheme: dark) {
+  @define-color window_bg_color #1e1e21;
+  @define-color view_bg_color #151517;
+  @define-color headerbar_bg_color #1e1e21;
+  @define-color headerbar_backdrop_color #1b1b1e;
+  @define-color headerbar_shade_color RGB(0 0 0 / 60%);
+  @define-color headerbar_darker_shade_color RGB(0 0 0 / 80%);
+  @define-color sidebar_bg_color #313136;
+  @define-color sidebar_backdrop_color #2a2a2f;
+  @define-color sidebar_border_color RGB(0 0 0 / 70%);
+  @define-color sidebar_shade_color RGB(0 0 0 / 35%);
+  @define-color secondary_sidebar_bg_color #27272b;
+  @define-color secondary_sidebar_backdrop_color #232327;
+  @define-color secondary_sidebar_border_color RGB(0 0 0 / 70%);
+  @define-color card_bg_color #2a2a2e;
+  @define-color card_shade_color RGB(0 0 0 / 45%);
+  @define-color dialog_bg_color #26262a;
+  @define-color popover_bg_color #3a3a3f;
+  @define-color popover_shade_color RGB(0 0 0 / 40%);
+  @define-color thumbnail_bg_color #2e2e33;
+  @define-color shade_color RGB(0 0 0 / 35%);
+}
+
+:root {
+  --window-radius: 18px;
+  --border-opacity: 12%;
+}
+
+/* Hairline outside, soft lift below, like a sheet of paper on a desk */
+window.csd {
+  box-shadow: 0 0 0 1px RGB(0 0 0 / 14%),
+              0 2px 6px RGB(0 0 0 / 8%),
+              0 18px 48px 4px RGB(0 0 0 / 20%);
+  outline: 1px solid RGB(255 255 255 / 55%);
+  outline-offset: -1px;
+}
+
+window.csd:backdrop {
+  box-shadow: 0 0 0 1px RGB(0 0 0 / 11%),
+              0 1px 4px RGB(0 0 0 / 5%),
+              0 10px 30px 2px RGB(0 0 0 / 11%);
+}
+
+window.csd.dialog.message,
+window.csd.messagedialog {
+  box-shadow: 0 0 0 1px RGB(0 0 0 / 14%),
+              0 12px 36px 2px RGB(0 0 0 / 22%);
+}
+
+@media (prefers-color-scheme: dark) {
+  window.csd {
+    box-shadow: 0 0 0 1px RGB(0 0 0 / 75%),
+                0 2px 6px RGB(0 0 0 / 30%),
+                0 22px 56px 6px RGB(0 0 0 / 55%);
+    outline: 1px solid RGB(255 255 255 / 13%);
+  }
+
+  window.csd:backdrop {
+    box-shadow: 0 0 0 1px RGB(0 0 0 / 65%),
+                0 1px 4px RGB(0 0 0 / 20%),
+                0 12px 34px 2px RGB(0 0 0 / 32%);
+    outline-color: RGB(255 255 255 / 8%);
+  }
+
+  window.csd.dialog.message,
+  window.csd.messagedialog {
+    box-shadow: 0 0 0 1px RGB(0 0 0 / 75%),
+                0 14px 40px 4px RGB(0 0 0 / 55%);
+  }
+}
+
+/* Chrome rim along the top edge of the window, like menus and dock.
+ * A border sits outside the content, so no bar can cover it.
+ */
+window.csd {
+  border-top: 1px solid RGB(255 255 255 / 70%);
+}
+
+@media (prefers-color-scheme: dark) {
+  window.csd {
+    border-top-color: RGB(255 255 255 / 24%);
+  }
+}
+
+window.csd.maximized,
+window.csd.tiled,
+window.csd.tiled-top,
+window.csd.tiled-left,
+window.csd.tiled-right,
+window.csd.tiled-bottom,
+window.csd.fullscreen {
+  border-top-width: 0;
+}
+
+/* Popovers and menus float with their own hairline and shadow */
+popover > contents,
+popover.background > contents {
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px RGB(0 0 0 / 12%),
+              0 8px 24px RGB(0 0 0 / 16%);
+}
+
+@media (prefers-color-scheme: dark) {
+  popover > contents,
+  popover.background > contents {
+    box-shadow: 0 0 0 1px RGB(0 0 0 / 70%),
+                inset 0 0 0 1px RGB(255 255 255 / 10%),
+                0 10px 30px RGB(0 0 0 / 45%);
+  }
+}
+
+/* Cards and boxed lists get a crisp edge instead of a fuzzy glow */
+list.boxed-list, list.content, list.boxed-list-separate > row, .card {
+  box-shadow: 0 0 0 1px RGB(0 0 0 / 8%),
+              0 1px 2px RGB(0 0 0 / 5%);
+}
+
+@media (prefers-color-scheme: dark) {
+  list.boxed-list, list.content, list.boxed-list-separate > row, .card {
+    box-shadow: 0 0 0 1px RGB(0 0 0 / 50%),
+                inset 0 0 0 1px RGB(255 255 255 / 6%);
+  }
+}
+
+/* Sidebar selection stays neutral, the accent lives in the icon */
+.navigation-sidebar > row:selected {
+  background-color: RGB(0 0 0 / 8%);
+  color: inherit;
+}
+
+.navigation-sidebar > row:selected image {
+  color: var(--accent-color);
+}
+
+@media (prefers-color-scheme: dark) {
+  .navigation-sidebar > row:selected {
+    background-color: RGB(255 255 255 / 10%);
+  }
+}
+
+/* Lighter cuts to sit with the thin symbolic icons */
+headerbar .title, windowtitle .title { font-weight: 600; }
+.title-1 { font-weight: 700; letter-spacing: -0.4px; }
+.title-2 { font-weight: 700; letter-spacing: -0.2px; }
+.title-3, .title-4 { font-weight: 600; }
+.heading, row.button .title, listview > header { font-weight: 600; }
+.caption-heading { font-weight: 600; }
+buttoncontent > box > label { font-weight: 600; }
+toggle-group > toggle { font-weight: 600; }
+popover.menu label.title { font-weight: 600; }
+tooltip { border-radius: 8px; }
+
+/* Light hairline on the sidebar edge so it reads as its own layer */
+@media (prefers-color-scheme: dark) {
+  .sidebar-pane:dir(ltr) { box-shadow: inset -1px 0 RGB(255 255 255 / 6%); }
+  .sidebar-pane:dir(rtl) { box-shadow: inset 1px 0 RGB(255 255 255 / 6%); }
+}
+
+/* The top level sidebar of every split view floats as its own panel.
+ * Nautilus, Settings and the KaiT2en apps share the same look.
+ */
+navigation-split-view > .sidebar-pane,
+overlay-split-view > .sidebar-pane {
+  margin: 8px 0 8px 8px;
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px RGB(0 0 0 / 10%),
+              0 4px 14px RGB(0 0 0 / 10%);
+}
+
+navigation-split-view > .sidebar-pane:dir(rtl),
+overlay-split-view > .sidebar-pane:dir(rtl),
+navigation-split-view > .sidebar-pane.end:dir(ltr),
+overlay-split-view > .sidebar-pane.end:dir(ltr) {
+  margin: 8px 8px 8px 0;
+}
+
+/* In dark mode the panel sits below the content in near black */
+@media (prefers-color-scheme: dark) {
+  navigation-split-view > .sidebar-pane,
+  overlay-split-view > .sidebar-pane {
+    background-color: #0d0d0f;
+    box-shadow: inset 0 1px RGB(255 255 255 / 38%),
+                inset 0 0 0 1px RGB(255 255 255 / 14%),
+                0 0 0 1px RGB(0 0 0 / 70%),
+                0 6px 18px RGB(0 0 0 / 30%);
+  }
+
+  navigation-split-view > .sidebar-pane:backdrop,
+  overlay-split-view > .sidebar-pane:backdrop {
+    background-color: #111113;
+  }
+}
+
+/* Split views nested inside content keep the stock inline sidebar */
+.content-pane navigation-split-view > .sidebar-pane,
+.content-pane overlay-split-view > .sidebar-pane {
+  margin: 0;
+  border-radius: 0;
+  background-color: var(--secondary-sidebar-bg-color);
+  box-shadow: inset -1px 0 var(--secondary-sidebar-border-color);
+}
+
+/* Compact rows with accent colored icons */
+.sidebar-pane .navigation-sidebar > row,
+placessidebar .navigation-sidebar > row {
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+.sidebar-pane .navigation-sidebar > row image,
+placessidebar .navigation-sidebar > row image {
+  color: var(--accent-color);
+}
+
+.sidebar-pane .navigation-sidebar > row button image,
+placessidebar .navigation-sidebar > row button image {
+  color: inherit;
+}
+
+/* Menus in a glass style. Mutter offers no blur to apps, so the glass
+ * comes from a top light rim and a soft sheen on a solid fill.
+ */
+popover.menu > contents {
+  padding: 6px;
+  border-radius: 16px;
+  border-color: RGB(0 0 0 / 12%);
+  background-color: #fcfcfd;
+  background-image: linear-gradient(to bottom, RGB(255 255 255 / 60%), RGB(255 255 255 / 0%) 45%);
+  box-shadow: inset 0 1px RGB(255 255 255 / 90%),
+              inset 0 0 0 1px RGB(255 255 255 / 40%),
+              0 12px 32px RGB(0 0 0 / 18%);
+}
+
+popover.menu > arrow {
+  border-color: RGB(0 0 0 / 12%);
+  background-color: #fcfcfd;
+}
+
+/* Hovered entries light up in the accent color */
+popover.menu modelbutton {
+  min-height: 30px;
+  border-radius: 10px;
+}
+
+popover.menu modelbutton:hover,
+popover.menu modelbutton:selected {
+  background-color: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+}
+
+popover.menu modelbutton:hover accelerator,
+popover.menu modelbutton:selected accelerator,
+popover.menu modelbutton:hover arrow,
+popover.menu modelbutton:selected arrow {
+  color: inherit;
+  opacity: 80%;
+}
+
+popover.menu modelbutton:active {
+  background-color: color-mix(in srgb, var(--accent-bg-color) 85%, black);
+  color: var(--accent-fg-color);
+}
+
+popover.menu separator {
+  margin: 5px 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  popover.menu > contents {
+    border-color: RGB(0 0 0 / 75%);
+    background-color: #18181b;
+    background-image: linear-gradient(to bottom, RGB(255 255 255 / 6%), RGB(255 255 255 / 2%) 35%, RGB(255 255 255 / 0%) 60%);
+    box-shadow: inset 0 1px RGB(255 255 255 / 38%),
+                inset 0 0 0 1px RGB(255 255 255 / 14%),
+                0 16px 40px RGB(0 0 0 / 55%);
+  }
+
+  popover.menu > arrow {
+    border-color: RGB(0 0 0 / 75%);
+    background-color: #18181b;
+  }
+}

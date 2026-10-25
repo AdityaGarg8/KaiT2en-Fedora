@@ -1,0 +1,7 @@
+{
+  "uuid": "kait2en-vornehm@kait2en",
+  "name": "KaiT2en Vornehm",
+  "description": "KaiT2en Vornehm, an opinionated take on how GNOME should look and feel. No settings.",
+  "shell-version": ["50", "51"],
+  "url": "https://github.com/kaiT2en/KaiT2en-Fedora"
+}
