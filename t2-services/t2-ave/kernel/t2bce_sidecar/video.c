@@ -609,10 +609,13 @@ static void t2sc_run_work(struct work_struct *work)
 	ret = t2sc_session_submit(ctx->session);
 	if (ret)
 		pr_warn_ratelimited("frame %u not taken by the T2 (%d)\n", id, ret);
+	/* A suspend closed the session, the client has to open a new one */
+	if (ret == -ENODEV)
+		vb2_queue_error(v4l2_m2m_get_dst_vq(ctx->fh.m2m_ctx));
 
 	v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
 	last = v4l2_m2m_is_last_draining_src_buf(ctx->fh.m2m_ctx, src);
-	v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
+	v4l2_m2m_buf_done(src, ret == -ENODEV ? VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
 	wake_up(&ctx->src_wait);
 
 drain:

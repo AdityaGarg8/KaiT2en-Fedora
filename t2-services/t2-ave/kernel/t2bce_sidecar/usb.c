@@ -2,6 +2,7 @@
 
 #include "sidecar.h"
 
+#include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -104,7 +105,8 @@ out_sgt:
 	return ret;
 }
 
-int t2sc_send(struct t2sc_device *dev, void *buf, size_t len, bool vmalloced)
+static int __t2sc_send(struct t2sc_device *dev, void *buf, size_t len, bool vmalloced,
+		       bool suspending)
 {
 	int actual, ret;
 
@@ -112,6 +114,8 @@ int t2sc_send(struct t2sc_device *dev, void *buf, size_t len, bool vmalloced)
 	mutex_lock(&dev->tx_lock);
 	if (dev->gone) {
 		ret = -ENODEV;
+	} else if (dev->suspended && !suspending) {
+		ret = -EAGAIN;
 	} else if (vmalloced) {
 		ret = t2sc_send_vmalloc(dev, buf, len);
 	} else {
@@ -120,9 +124,14 @@ int t2sc_send(struct t2sc_device *dev, void *buf, size_t len, bool vmalloced)
 			ret = -EIO;
 	}
 	mutex_unlock(&dev->tx_lock);
-	if (ret && ret != -ENODEV)
+	if (ret && ret != -ENODEV && ret != -EAGAIN)
 		pr_warn("send of %zu bytes failed (%d)\n", len, ret);
 	return ret;
+}
+
+int t2sc_send(struct t2sc_device *dev, void *buf, size_t len, bool vmalloced)
+{
+	return __t2sc_send(dev, buf, len, vmalloced, false);
 }
 
 void t2sc_add_waiter(struct t2sc_device *dev, struct t2sc_waiter *w, u32 seq)
@@ -159,8 +168,8 @@ int t2sc_wait_reply(struct t2sc_device *dev, struct t2sc_waiter *w, unsigned int
 	return 0;
 }
 
-int t2sc_request(struct t2sc_device *dev, u16 type, u16 session, const void *payload,
-		 size_t payload_len, struct t2sc_pkt **reply)
+static int __t2sc_request(struct t2sc_device *dev, u16 type, u16 session, const void *payload,
+			  size_t payload_len, struct t2sc_pkt **reply, bool suspending)
 {
 	struct t2sc_waiter w;
 	struct t2sc_hdr *hdr;
@@ -178,13 +187,19 @@ int t2sc_request(struct t2sc_device *dev, u16 type, u16 session, const void *pay
 		memcpy(buf + T2SC_HDR_LEN, payload, payload_len);
 
 	t2sc_add_waiter(dev, &w, le32_to_cpu(hdr->seq));
-	ret = t2sc_send(dev, buf, T2SC_HDR_LEN + payload_len, false);
+	ret = __t2sc_send(dev, buf, T2SC_HDR_LEN + payload_len, false, suspending);
 	kfree(buf);
 	if (ret) {
 		t2sc_remove_waiter(dev, &w);
 		return ret;
 	}
 	return t2sc_wait_reply(dev, &w, T2SC_REPLY_TIMEOUT_MS, reply);
+}
+
+int t2sc_request(struct t2sc_device *dev, u16 type, u16 session, const void *payload,
+		 size_t payload_len, struct t2sc_pkt **reply)
+{
+	return __t2sc_request(dev, type, session, payload, payload_len, reply, false);
 }
 
 static void t2sc_dispatch(struct t2sc_device *dev, struct t2sc_pkt *pkt)
@@ -241,17 +256,31 @@ static int t2sc_rx_thread(void *data)
 		struct t2sc_pkt *pkt;
 		unsigned int got;
 
+		if (READ_ONCE(dev->rx_suspended)) {
+			len = 0;
+			wait_event_interruptible(dev->rx_wait, !READ_ONCE(dev->rx_suspended) ||
+						 READ_ONCE(dev->gone) || kthread_should_stop());
+			continue;
+		}
+
 		reinit_completion(&dev->rx_done);
 		usb_fill_bulk_urb(dev->rx_urb, dev->udev, dev->pipe_in, chunk, T2SC_RX_CHUNK,
 				  t2sc_urb_complete, &dev->rx_done);
 		ret = usb_submit_urb(dev->rx_urb, GFP_KERNEL);
-		if (ret)
+		if (ret) {
+			/* The suspend poisons the URB, wait for the resume */
+			if (READ_ONCE(dev->rx_suspended))
+				continue;
 			break;
+		}
 		wait_for_completion(&dev->rx_done);
 		ret = dev->rx_urb->status;
 		got = dev->rx_urb->actual_length;
-		if (ret == -ENOENT || ret == -ECONNRESET || ret == -ESHUTDOWN || ret == -ENODEV)
+		if (ret == -ENOENT || ret == -ECONNRESET || ret == -ESHUTDOWN || ret == -ENODEV) {
+			if (READ_ONCE(dev->rx_suspended))
+				continue;
 			break;
+		}
 		if (ret) {
 			dev_warn(&dev->intf->dev, "receive failed (%d), dropping partial packet\n", ret);
 			len = 0;
@@ -336,6 +365,7 @@ static int t2sc_probe(struct usb_interface *intf, const struct usb_device_id *id
 	spin_lock_init(&dev->wait_lock);
 	INIT_LIST_HEAD(&dev->waiters);
 	init_completion(&dev->rx_done);
+	init_waitqueue_head(&dev->rx_wait);
 	dev->rx_urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!dev->rx_urb) {
 		ret = -ENOMEM;
@@ -382,6 +412,71 @@ static void t2sc_disconnect(struct usb_interface *intf)
 	dev_info(&intf->dev, "SideCar AVE encoder detached\n");
 }
 
+/* Waits for the replies to requests in flight, the receive thread still runs. */
+static void t2sc_drain_waiters(struct t2sc_device *dev)
+{
+	unsigned long end = jiffies + msecs_to_jiffies(T2SC_REPLY_TIMEOUT_MS);
+	bool empty;
+
+	for (;;) {
+		spin_lock(&dev->wait_lock);
+		empty = list_empty(&dev->waiters);
+		spin_unlock(&dev->wait_lock);
+		if (empty || time_after(jiffies, end))
+			return;
+		msleep(10);
+	}
+}
+
+/*
+ * Without suspend callbacks the USB core unbinds the driver during the system
+ * suspend and the T2 keeps the session and the queued transfers. Close the
+ * session on the T2 and park the receive thread instead.
+ */
+static int t2sc_suspend(struct usb_interface *intf, pm_message_t message)
+{
+	struct t2sc_device *dev = usb_get_intfdata(intf);
+	struct t2sc_pkt *reply;
+	bool close = false;
+	u16 id = 0;
+
+	mutex_lock(&dev->tx_lock);
+	dev->suspended = true;
+	mutex_unlock(&dev->tx_lock);
+	t2sc_drain_waiters(dev);
+
+	mutex_lock(&dev->frame_lock);
+	if (dev->session) {
+		WRITE_ONCE(dev->session->dead, true);
+		id = dev->session->id;
+		close = true;
+	}
+	mutex_unlock(&dev->frame_lock);
+	if (close && !__t2sc_request(dev, T2SC_PKT_CLOSE, id, NULL, 0, &reply, true)) {
+		kvfree(reply);
+		dev_info(&intf->dev, "session %#x closed for suspend\n", id);
+	}
+
+	WRITE_ONCE(dev->rx_suspended, true);
+	usb_poison_urb(dev->rx_urb);
+	t2sc_fail_waiters(dev);
+	return 0;
+}
+
+static int t2sc_resume(struct usb_interface *intf)
+{
+	struct t2sc_device *dev = usb_get_intfdata(intf);
+
+	usb_unpoison_urb(dev->rx_urb);
+	WRITE_ONCE(dev->rx_suspended, false);
+	wake_up(&dev->rx_wait);
+
+	mutex_lock(&dev->tx_lock);
+	dev->suspended = false;
+	mutex_unlock(&dev->tx_lock);
+	return 0;
+}
+
 static const struct usb_device_id t2sc_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(T2SC_VENDOR, T2SC_PRODUCT, 0xff, 0x90, 0xff) },
 	{ }
@@ -392,6 +487,10 @@ static struct usb_driver t2sc_driver = {
 	.name = "t2bce_sidecar",
 	.probe = t2sc_probe,
 	.disconnect = t2sc_disconnect,
+	.suspend = t2sc_suspend,
+	.resume = t2sc_resume,
+	/* The session died with the suspend, nothing else to restore */
+	.reset_resume = t2sc_resume,
 	.id_table = t2sc_ids,
 	.soft_unbind = 1,
 };
@@ -400,4 +499,4 @@ module_usb_driver(t2sc_driver);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@kait2en.org>");
 MODULE_DESCRIPTION("Apple T2 Sidecar video encoder");
-MODULE_VERSION("0.01");
+MODULE_VERSION("0.03");

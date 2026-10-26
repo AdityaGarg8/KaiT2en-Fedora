@@ -7,6 +7,7 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/wait.h>
 
 /*
  * The T2 creates the "SideCar AVE" USB device while a RemoteXPC client is
@@ -106,6 +107,9 @@ struct t2sc_session {
 	u8 *params;
 	size_t params_len;
 	unsigned int nal_len_size;
+
+	/* Closed on the T2 by a system suspend, only t2sc_session_close is left */
+	bool dead;
 };
 
 /* usb.c */
@@ -119,10 +123,15 @@ struct t2sc_device {
 
 	struct mutex tx_lock;
 	bool gone;
+	/* Sends are refused from the start of a system suspend until resume */
+	bool suspended;
 
 	struct task_struct *rx_thread;
 	struct urb *rx_urb;
 	struct completion rx_done;
+	/* The receive thread waits here while the receive URB is poisoned */
+	bool rx_suspended;
+	wait_queue_head_t rx_wait;
 	spinlock_t wait_lock;
 	struct list_head waiters;
 	u32 seq;

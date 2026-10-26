@@ -64,6 +64,8 @@ static int t2sc_set_properties(struct t2sc_session *s, const struct t2sc_bpw *w)
 	u8 *plist;
 	int len, ret;
 
+	if (READ_ONCE(s->dead))
+		return -ENODEV;
 	plist = kmalloc(T2SC_PLIST_MAX, GFP_KERNEL);
 	if (!plist)
 		return -ENOMEM;
@@ -332,6 +334,8 @@ int t2sc_session_submit(struct t2sc_session *s)
 	u32 seq;
 	int ret;
 
+	if (READ_ONCE(s->dead))
+		return -ENODEV;
 	seq = t2sc_next_seq(s->dev);
 	hdr->type = cpu_to_le16(T2SC_PKT_ENCODE);
 	hdr->session = cpu_to_le16(s->id);
@@ -354,6 +358,8 @@ int t2sc_session_complete(struct t2sc_session *s)
 	s32 status;
 	int ret;
 
+	if (READ_ONCE(s->dead))
+		return -ENODEV;
 	t2sc_wait_all(s);
 	ret = t2sc_request(s->dev, T2SC_PKT_COMPLETE, s->id, NULL, 0, &reply);
 	if (ret)
@@ -367,13 +373,24 @@ void t2sc_session_close(struct t2sc_session *s)
 {
 	struct t2sc_device *dev = s->dev;
 	struct t2sc_pkt *reply;
+	unsigned int i;
 
 	/* The T2 crashed when its peer vanished with frames unacknowledged;
 	 * frames keep being acknowledged by the receive thread after this.
 	 */
-	t2sc_wait_all(s);
-	if (!t2sc_request(dev, T2SC_PKT_CLOSE, s->id, NULL, 0, &reply))
-		kvfree(reply);
+	if (!READ_ONCE(s->dead)) {
+		t2sc_wait_all(s);
+		if (!t2sc_request(dev, T2SC_PKT_CLOSE, s->id, NULL, 0, &reply))
+			kvfree(reply);
+	} else {
+		/* Replies the suspend did not wait for will never come */
+		for (i = 0; i < ARRAY_SIZE(s->inflight); i++) {
+			if (s->inflight[i]) {
+				s->inflight[i] = false;
+				t2sc_remove_waiter(dev, &s->wait[i]);
+			}
+		}
+	}
 	mutex_lock(&dev->frame_lock);
 	if (dev->session == s)
 		dev->session = NULL;
