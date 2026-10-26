@@ -161,6 +161,100 @@ apply_ptyxis() {
 	gsettings set org.gnome.Ptyxis font-name "$font 11"
 }
 
+# Firefox reads userChrome.css from each profile at startup. The theme goes
+# to the profiles the installs use, a foreign userChrome.css is moved aside
+# like gtk.css. Profiles appear on the first start, so a fresh system needs
+# one Firefox start and another run.
+FIREFOX_ROOTS=(
+	"${XDG_CONFIG_HOME:-$HOME/.config}/mozilla/firefox"
+	"$HOME/.mozilla/firefox"
+	"$HOME/.var/app/org.mozilla.firefox/config/mozilla/firefox"
+	"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox"
+)
+FIREFOX_PREF='user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true); // kait2en-vornehm'
+
+# Lists the profile directories one per line. A missing profiles.ini only
+# means that Firefox never ran from that location.
+firefox_profiles() {
+	local root path
+	for root in "${FIREFOX_ROOTS[@]}"; do
+		[[ -e "$root/profiles.ini" ]] || continue
+		if [[ ! -r "$root/profiles.ini" ]]; then
+			record_error "cannot read $root/profiles.ini, its Firefox profiles stay unthemed"
+			continue
+		fi
+		{
+			if [[ -r "$root/installs.ini" ]]; then
+				sed -n 's/^Default=//p' "$root/installs.ini"
+			fi
+			awk -F= '/^\[/ { path = "" } $1 == "Path" { path = $2 }
+				$1 == "Default" && $2 == 1 && path != "" { print path }' "$root/profiles.ini"
+		} | sort -u | while read -r path; do
+			[[ $path == /* ]] || path="$root/$path"
+			if [[ -d $path ]]; then printf '%s\n' "$path"; fi
+		done
+	done
+}
+
+# Only a userChrome.css that consists of the import line is ours.
+is_own_userchrome() {
+	[[ -f $1 && $(<"$1") == "$IMPORT_LINE" ]]
+}
+
+install_firefox_profile() {
+	local profile=$1 chrome=$1/chrome theme
+	install -d -m 0755 "$chrome"
+	install -m 0644 "$THEME_SRC/firefox/kait2en-vornehm.css" "$chrome/kait2en-vornehm.css"
+	if [[ -e "$chrome/userChrome.css" ]] && ! is_own_userchrome "$chrome/userChrome.css"; then
+		if [[ ! -e "$chrome/userChrome.css.kait2en-vornehm-backup" ]]; then
+			mv "$chrome/userChrome.css" "$chrome/userChrome.css.kait2en-vornehm-backup"
+		fi
+		info "previous userChrome.css saved in $chrome"
+	fi
+	printf '%s\n' "$IMPORT_LINE" >"$chrome/userChrome.css"
+	if [[ ! -e "$profile/user.js" ]] || ! grep -qxF "$FIREFOX_PREF" "$profile/user.js"; then
+		printf '%s\n' "$FIREFOX_PREF" >>"$profile/user.js"
+	fi
+	# prefs.js appears on the first start of the profile
+	if [[ -e "$profile/prefs.js" ]]; then
+		theme=$(sed -n 's/^user_pref("extensions.activeThemeID", "\(.*\)");$/\1/p' "$profile/prefs.js")
+		[[ -z $theme || $theme == default-theme@mozilla.org ]] ||
+			warn "Firefox profile ${profile##*/} uses another theme, pick \"System theme — auto\" for KaiT2en Vornehm"
+	fi
+}
+
+remove_firefox_profile() {
+	local profile=$1 chrome=$1/chrome
+	rm -f "$chrome/kait2en-vornehm.css"
+	if [[ -e "$chrome/userChrome.css.kait2en-vornehm-backup" ]]; then
+		mv -f "$chrome/userChrome.css.kait2en-vornehm-backup" "$chrome/userChrome.css"
+	elif is_own_userchrome "$chrome/userChrome.css"; then
+		rm -f "$chrome/userChrome.css"
+	fi
+	if [[ -d $chrome ]]; then
+		find "$chrome" -maxdepth 0 -empty -delete
+	fi
+	if [[ -e "$profile/user.js" ]]; then
+		sed -i "\\|// kait2en-vornehm\$|d" "$profile/user.js"
+		[[ -s "$profile/user.js" ]] || rm -f "$profile/user.js"
+	fi
+}
+
+# Each profile is its own step, a broken one is logged and the others and
+# the rest of the theme still go through.
+for_each_firefox_profile() {
+	local action=$1 label=$2 list profile
+	list=$(firefox_profiles)
+	if [[ -z $list ]]; then
+		[[ $action == remove_firefox_profile ]] ||
+			warn "no Firefox profile yet, start Firefox once and run this script again"
+		return 0
+	fi
+	while read -r profile; do
+		run_step "$label ${profile##*/}" "$action" "$profile"
+	done <<<"$list"
+}
+
 restore_look_settings() {
 	local schema key value
 	[[ -r "$SETTINGS_PREVIOUS" ]] || return 0
@@ -179,6 +273,7 @@ if [[ $remove == true ]]; then
 	rm -rf "$ICON_DIR"
 	restore_look_settings
 	rm -f "$PTYXIS_PALETTES/$PTYXIS_PALETTE.palette"
+	for_each_firefox_profile remove_firefox_profile "removing KaiT2en Vornehm from Firefox profile"
 	rm -rf "$BG_DIR"
 	rm -f "$BG_PROPS"
 	set_extension_enabled false
@@ -220,7 +315,8 @@ install_backgrounds
 prepare_ptyxis
 save_look_settings
 apply_ptyxis
-gsettings set org.gnome.desktop.background picture-uri "file://$BG_DIR/$BG_DEFAULT"
+for_each_firefox_profile install_firefox_profile "installing KaiT2en Vornehm in Firefox profile"
+gsettings set org.gnome.desktop.background picture-uri"file://$BG_DIR/$BG_DEFAULT"
 gsettings set org.gnome.desktop.background picture-uri-dark "file://$BG_DIR/$BG_DEFAULT"
 gsettings set org.gnome.desktop.background picture-options zoom
 gsettings set org.gnome.desktop.interface color-scheme prefer-dark
@@ -230,4 +326,4 @@ if command -v flatpak >/dev/null 2>&1; then
 	flatpak override --user --filesystem=xdg-config/gtk-4.0:ro
 fi
 
-info "restart running apps to see KaiT2en Vornehm, log out once for the shell part"
+info "restart running apps and Firefox to see KaiT2en Vornehm, log out once for the shell part"

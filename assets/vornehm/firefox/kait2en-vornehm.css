@@ -1,0 +1,178 @@
+/* KaiT2en Vornehm for Firefox.
+ * Same surfaces, hairlines and glass menus as the GTK4 part, built on the
+ * "System theme — auto" with Nova. Loaded through userChrome.css, the accent
+ * color stays the system's. Firefox chrome sheets are author sheets, so
+ * every rule here needs !important to win.
+ */
+
+/* Light surfaces */
+:root {
+  --toolbox-background-color: #f2f2f5 !important;
+  --toolbox-background-color-inactive: #f6f6f8 !important;
+  --toolbox-text-color: #242424 !important;
+  --toolbox-text-color-inactive: #242424 !important;
+  --toolbar-background-color: #f2f2f5 !important;
+  --toolbar-text-color: #242424 !important;
+  --toolbar-field-background-color: #ffffff !important;
+  --toolbar-field-background-color-focus: #ffffff !important;
+  --toolbar-field-text-color: #242424 !important;
+  --toolbar-field-text-color-focus: #242424 !important;
+  --toolbar-field-border-color: rgba(0, 0, 0, 0.10) !important;
+  --toolbarbutton-icon-fill: #3a3a3c !important;
+  --tab-background-color: transparent !important;
+  --tab-background-color-hover: rgba(0, 0, 0, 0.06) !important;
+  --tab-background-color-selected: #ffffff !important;
+  --tab-text-color-selected: #242424 !important;
+  --tab-border-radius: 10px !important;
+  --urlbar-border-radius: 10px !important;
+  --sidebar-background-color: #e2e2e8 !important;
+  --sidebar-text-color: #242424 !important;
+  --sidebar-border-color: rgba(0, 0, 0, 0.12) !important;
+  --chrome-content-separator-color: rgba(0, 0, 0, 0.12) !important;
+  --content-area-shadow: 0 0 0 1px rgba(0, 0, 0, 0.10),
+                         0 4px 14px rgba(0, 0, 0, 0.10) !important;
+}
+
+/* Dark surfaces step up clearly from content to popover */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --toolbox-background-color: #1e1e21 !important;
+    --toolbox-background-color-inactive: #1b1b1e !important;
+    --toolbox-text-color: #e8e8e8 !important;
+    --toolbox-text-color-inactive: #bdbdc2 !important;
+    --toolbar-background-color: #1e1e21 !important;
+    --toolbar-text-color: #e8e8e8 !important;
+    --toolbar-field-background-color: #151517 !important;
+    --toolbar-field-background-color-focus: #151517 !important;
+    --toolbar-field-text-color: #e8e8e8 !important;
+    --toolbar-field-text-color-focus: #f2f2f4 !important;
+    --toolbar-field-border-color: rgba(255, 255, 255, 0.08) !important;
+    --toolbarbutton-icon-fill: #d6d6da !important;
+    --tab-background-color-hover: rgba(255, 255, 255, 0.07) !important;
+    --tab-background-color-selected: #2a2a2e !important;
+    --tab-text-color-selected: #f2f2f4 !important;
+    --sidebar-background-color: #0d0d0f !important;
+    --sidebar-text-color: #d6d6da !important;
+    --sidebar-border-color: rgba(255, 255, 255, 0.14) !important;
+    --chrome-content-separator-color: rgba(0, 0, 0, 0.70) !important;
+    --content-area-shadow: 0 0 0 1px rgba(0, 0, 0, 0.70),
+                           inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+                           0 6px 18px rgba(0, 0, 0, 0.30) !important;
+  }
+}
+
+/* Chrome rim along the top edge of the window, like menus and dock */
+:root[sizemode="normal"]:not([tiled]) #navigator-toolbox {
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.70) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[sizemode="normal"]:not([tiled]) #navigator-toolbox {
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.24) !important;
+  }
+}
+
+/* The selected tab is a card with a crisp edge instead of a fuzzy glow */
+.tabbrowser-tab[selected] > .tab-stack > .tab-background {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08),
+              0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tabbrowser-tab[selected] > .tab-stack > .tab-background {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.50),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  }
+}
+
+/* The sidebar floats as its own panel. In dark mode it sits below the
+ * content in near black with a light rim on top.
+ */
+#sidebar {
+  border-radius: 14px !important;
+  outline: none !important;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.10),
+              0 4px 14px rgba(0, 0, 0, 0.10) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  #sidebar {
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.38),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+                0 0 0 1px rgba(0, 0, 0, 0.70),
+                0 6px 18px rgba(0, 0, 0, 0.30) !important;
+  }
+}
+
+/* Menus and panels in a glass style. Firefox gets no blur from Mutter
+ * either, so the glass comes from a top light rim and a soft sheen on a
+ * solid fill. The larger shadow margin leaves room for the lift.
+ */
+menupopup,
+panel {
+  --panel-background-color: #fcfcfd !important;
+  --panel-text-color: #242424 !important;
+  --panel-border-color: rgba(0, 0, 0, 0.12) !important;
+  --panel-border-radius: 16px !important;
+  --panel-padding-block: 6px !important;
+  --panel-menuitem-border-radius: 10px !important;
+  --menuitem-border-radius: 10px !important;
+  --panel-box-shadow-margin: 16px !important;
+  --panel-box-shadow: inset 0 1px rgba(255, 255, 255, 0.90),
+                      inset 0 0 0 1px rgba(255, 255, 255, 0.40),
+                      0 12px 32px rgba(0, 0, 0, 0.18) !important;
+}
+
+menupopup::part(content),
+panel::part(content) {
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0) 45%) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  menupopup,
+  panel {
+    --panel-background-color: #18181b !important;
+    --panel-text-color: #e8e8e8 !important;
+    --panel-border-color: rgba(0, 0, 0, 0.75) !important;
+    --panel-box-shadow: inset 0 1px rgba(255, 255, 255, 0.38),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+                        0 16px 40px rgba(0, 0, 0, 0.55) !important;
+  }
+
+  menupopup::part(content),
+  panel::part(content) {
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02) 35%, rgba(255, 255, 255, 0) 60%) !important;
+  }
+}
+
+/* Hovered entries light up in the accent color */
+menupopup > :is(menu, menuitem) {
+  min-height: 30px !important;
+}
+
+menupopup > :is(menu, menuitem)[_moz-menuactive]:not([disabled]),
+.subviewbutton:not([disabled]):hover {
+  background-color: AccentColor !important;
+  color: AccentColorText !important;
+  fill: AccentColorText !important;
+}
+
+.subviewbutton:not([disabled]):hover:active {
+  background-color: color-mix(in srgb, AccentColor 85%, black) !important;
+}
+
+.subviewbutton:not([disabled]):hover::after,
+menupopup > :is(menu, menuitem)[_moz-menuactive]:not([disabled]) > .menu-accel {
+  color: inherit !important;
+  opacity: 0.8;
+}
+
+menupopup > menuseparator {
+  margin: 5px 10px !important;
+}
+
+/* Lighter cuts to sit with the thin symbolic icons */
+.panel-header > h1,
+menucaption {
+  font-weight: 600 !important;
+}
