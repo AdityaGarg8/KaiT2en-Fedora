@@ -316,7 +316,7 @@ prepare_ptyxis
 save_look_settings
 apply_ptyxis
 for_each_firefox_profile install_firefox_profile "installing KaiT2en Vornehm in Firefox profile"
-gsettings set org.gnome.desktop.background picture-uri"file://$BG_DIR/$BG_DEFAULT"
+gsettings set org.gnome.desktop.background picture-uri "file://$BG_DIR/$BG_DEFAULT"
 gsettings set org.gnome.desktop.background picture-uri-dark "file://$BG_DIR/$BG_DEFAULT"
 gsettings set org.gnome.desktop.background picture-options zoom
 gsettings set org.gnome.desktop.interface color-scheme prefer-dark
