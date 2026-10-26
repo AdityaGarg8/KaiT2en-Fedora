@@ -1264,6 +1264,27 @@ static int t2smc_write_chls(struct t2smc_device *t2)
 }
 
 /*
+ * An SMC reset or a T2 panic clears CHLS. Report what the SMC holds, not the
+ * limit set last. A suspended limit keeps CHLS at 0 on purpose.
+ */
+static int t2smc_read_charge_limit(struct t2smc_device *t2, u8 *limit)
+{
+	u8 buf[2];
+	int ret;
+
+	lockdep_assert_held(&t2->charge_lock);
+
+	if (!t2->charge_limit_suspended) {
+		ret = t2smc_read_key(t2, T2SMC_CHARGE_LIMIT, buf, sizeof(buf));
+		if (ret)
+			return ret;
+		t2->charge_limit = buf[0] > 0 && buf[0] < 100 ? buf[0] : 100;
+	}
+	*limit = t2->charge_limit;
+	return 0;
+}
+
+/*
  * The SMC keeps CHLS and BCLM over reboots and across operating systems.
  * Take the limit over from CHLS and clear a BCLM limit left behind, macOS on
  * T2 Macs has no way to lift it.
@@ -1292,6 +1313,7 @@ static void t2smc_init_charge_limit(struct t2smc_device *t2)
 
 static int t2smc_set_charge_limit(struct t2smc_device *t2, u8 val)
 {
+	u8 cur;
 	int ret;
 
 	if (!t2->has_chls)
@@ -1299,7 +1321,12 @@ static int t2smc_set_charge_limit(struct t2smc_device *t2, u8 val)
 	if (val < 1 || val > 100)
 		return -EINVAL;
 
+	/* Udev rules without ACTION rewrite the limit on every change uevent */
 	mutex_lock(&t2->charge_lock);
+	if (!t2smc_read_charge_limit(t2, &cur) && cur == val) {
+		mutex_unlock(&t2->charge_lock);
+		return 0;
+	}
 	t2->charge_limit = val;
 	ret = t2smc_write_chls(t2);
 	mutex_unlock(&t2->charge_lock);
@@ -1318,8 +1345,13 @@ static ssize_t charge_limit_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct t2smc_device *t2 = dev_get_drvdata(dev);
+	u8 limit;
+	int ret;
 
-	return sysfs_emit(buf, "%u\n", READ_ONCE(t2->charge_limit));
+	mutex_lock(&t2->charge_lock);
+	ret = t2smc_read_charge_limit(t2, &limit);
+	mutex_unlock(&t2->charge_lock);
+	return ret ? ret : sysfs_emit(buf, "%u\n", limit);
 }
 
 static ssize_t charge_limit_store(struct device *dev,
@@ -1441,11 +1473,18 @@ static int t2smc_psy_ext_get(struct power_supply *psy,
 			     union power_supply_propval *val)
 {
 	struct t2smc_device *t2 = data;
+	u8 limit;
+	int ret;
 
 	if (psp != POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD)
 		return -EINVAL;
 
-	val->intval = READ_ONCE(t2->charge_limit);
+	mutex_lock(&t2->charge_lock);
+	ret = t2smc_read_charge_limit(t2, &limit);
+	mutex_unlock(&t2->charge_lock);
+	if (ret)
+		return ret;
+	val->intval = limit;
 	return 0;
 }
 
