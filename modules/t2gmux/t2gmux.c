@@ -1396,9 +1396,12 @@ static void gmux_interrupt_work(struct work_struct *work)
 	gmux_enable_interrupts(gmux_data);
 	mutex_unlock(&gmux_data->power_lock);
 
-	/* Outside power_lock, the resume powers the dGPU up through gmux. */
+	/*
+	 * Resume asynchronously, the power-up waits for a POWER interrupt
+	 * that only this work can handle.
+	 */
 	if (turn_on_gpu && gmux_data->discrete_pdev)
-		pm_runtime_resume(&gmux_data->discrete_pdev->dev);
+		pm_request_resume(&gmux_data->discrete_pdev->dev);
 }
 
 /**
