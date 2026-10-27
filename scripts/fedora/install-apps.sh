@@ -119,6 +119,11 @@ install_rust_app() {
 	mark_applied "app:$name"
 }
 
+install_touchbar() {
+	"$REPO_ROOT/apps/t2-touchbar/install.sh"
+	mark_applied app:t2-touchbar
+}
+
 # Apps with their own install.sh. A failure is reported and the rest continues.
 install_script_app() {
 	local name=$1
@@ -188,7 +193,7 @@ if ! wanted t2-touchbar; then
 elif ! has_touch_bar; then
 	info "no Touch Bar on this model; skipping kait2en-touchbar"
 elif [[ "${KAIT2EN_INSTALL_TOUCHBAR:-1}" == 1 ]]; then
-	run_step "kait2en-touchbar" install_script_app t2-touchbar
+	run_step "kait2en-touchbar" install_touchbar
 elif [[ -x /usr/local/bin/kait2en-touchbar ]]; then
 	info "kait2en-touchbar not selected; the existing installation is left unchanged"
 	info "remove it with: sudo $REPO_ROOT/apps/t2-touchbar/uninstall.sh"
@@ -199,8 +204,13 @@ wanted t2-journal && run_step "t2-journal" install_rust_app "$REPO_ROOT/t2-servi
 wanted gpu-control && run_step "GPU control" install_gpu_control
 run_step "remove t2-cpu-control" remove_t2_cpu_control
 wanted t2-zone-power && run_step "t2-zone-power" install_rust_app "$REPO_ROOT/apps/t2-zone-power" "t2-zone-power"
-if wanted t2-kernel-builder && ! install_script_app t2-kernel-builder; then
-	warn "t2-kernel-builder is optional, retry it later with: sudo $REPO_ROOT/apps/t2-kernel-builder/install.sh"
+if ! wanted t2-kernel-builder; then
+	:
+elif "$REPO_ROOT/apps/t2-kernel-builder/install.sh"; then
+	mark_applied app:t2-kernel-builder
+else
+	warn "t2-kernel-builder installation failed; continuing because it is optional"
+	warn "retry it later with: sudo $REPO_ROOT/apps/t2-kernel-builder/install.sh"
 fi
 wanted t2-power-tune && install_script_app t2-power-tune || true
 wanted t2-sidecar && install_script_app t2-sidecar || true
