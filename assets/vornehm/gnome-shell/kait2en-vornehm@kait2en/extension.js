@@ -247,6 +247,7 @@ class GlassSurface {
         this._glass.add_effect(this._blur);
         this._glass.add_effect(this._mask);
         parent.insert_child_below(this._glass, below);
+        this._glass.connect('destroy', () => this._release());
         this._fill();
 
         surface.connectObject('destroy', () => this.destroy(), this);
@@ -325,15 +326,22 @@ class GlassSurface {
         this._glass.show();
     }
 
-    destroy() {
+    // Runs while the glass still has its children, also when the shell
+    // destroys the parent of a closing dialog before the dialog itself.
+    _release() {
         if (!this._timeline)
             return;
         this._timeline.stop();
         this._timeline = null;
         this._surface.disconnectObject(this);
         this._bgManager?.destroy();
-        this._glass.destroy();
+        this._bgManager = null;
         GlassSurface.active.delete(this);
+    }
+
+    destroy() {
+        if (this._timeline)
+            this._glass.destroy();
     }
 
     // Glass is optional, a surface without a place for it opens plain.
