@@ -319,8 +319,9 @@ outcome of the Bluetooth step is recorded in the installed system at:
 
 `t2-fan-control`, `t2-smc-control`, `t2-power-explorer`, `t2-debug`,
 `t2-zone-power`, `t2-journal`, `kait2en-touchbar`, `kernel-builder`,
-`t2-power-tune` and `kait2en-update` are installed system-wide under `/usr/local`. `kait2en-touchbar` is optional and
-only installed when selected at the start of the installation.
+`t2-power-tune` and `kait2en-update` are installed system-wide under `/usr/local`. `kait2en-touchbar` and
+`t2-autobrightness` are optional and only installed when selected at the start
+of the installation.
 
 MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4 get
 `t2-hybrid-gpu-control`; other MacBook Pro models with Intel and AMD display
@@ -342,6 +343,7 @@ All KAIT2EN desktop applications use the shared header wordmark at
 | KaiT2en Update | `/usr/local/bin/kait2en-update`, `/usr/local/libexec/kait2en-update-helper`, `/usr/local/share/applications/org.kait2enupdate.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.kait2enupdate.gtk.svg`, `/usr/share/polkit-1/actions/org.kait2enupdate.policy` |
 | T2 Debug | `/usr/local/bin/t2-debug`, `/usr/local/bin/t2debug`, `/usr/local/share/applications/org.t2debug.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2debug.gtk.svg` |
 | T2 Touch Bar | `/usr/local/bin/kait2en-touchbar`, `/usr/local/lib/systemd/user/kait2en-touchbar.service`, `/usr/local/lib/systemd/system/kait2en-touchbar-attach.service`, `/usr/local/lib/udev/rules.d/99-zz-kait2en-touchbar.rules`, `/etc/kait2en/touchbar.toml`, `/usr/local/share/licenses/kait2en-touchbar/THIRD-PARTY-NOTICES.md` |
+| Automatic brightness | `/usr/local/bin/t2-autobrightness`, `/usr/local/lib/systemd/user/kait2en-t2-autobrightness.service` (enabled with `--global`), `/usr/local/share/gnome-shell/extensions/kait2en-autobrightness@kait2en/`, per user `~/.local/state/t2-autobrightness/curve` and, while it runs, `~/.local/state/t2-autobrightness/gnome-settings` |
 | T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy`, `/etc/environment.d/90-kait2en-gsk-renderer.conf` |
 | T2 GPU Control | `/usr/local/bin/t2-dgpu-control`, `/usr/local/libexec/t2-dgpu-control-helper`, `/usr/local/libexec/t2-dgpu-control-status`, `/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-dgpu-off.service`, `/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.status.policy` |
 

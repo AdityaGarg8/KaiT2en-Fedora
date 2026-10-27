@@ -22,8 +22,8 @@ Most updates only touch one or two of them.
   the next check.
 - Shows a restart hint when kernel modules or the initramfs were updated.
 - Offers to install everything when the installer itself changed.
-- Adds or removes the optional parts, T2 Touch Bar and KaiT2en Vornehm. A
-  switch only marks the change, Update carries it out.
+- Adds or removes the optional parts, T2 Touch Bar, Automatic brightness and
+  KaiT2en Vornehm. A switch only marks the change, Update carries it out.
 
 The installation runs through a restricted helper that asks for your password
 and only accepts the names of known installer steps and apps.
@@ -177,6 +177,33 @@ Settings are in `/etc/kait2en/touchbar.toml`. To return to the native Touch
 Bar, run `sudo systemctl --global disable kait2en-touchbar.service` and
 reboot, or remove it with
 `sudo /usr/local/src/KaiT2en-Fedora/apps/t2-touchbar/uninstall.sh`.
+
+## Automatic brightness
+
+Optional. The installer only asks on MacBook Pro and MacBook Air models with
+GNOME. Without it, GNOME keeps its own brightness handling.
+
+Adjusts the display brightness to the ambient light the way macOS does.
+
+- Changes fade in slowly over a few seconds, in steps too small to see.
+- Changes in light of less than about 20 % are ignored, so the screen does
+  not follow every shadow.
+- Setting the brightness by hand pauses it. One second later it learns the
+  new brightness for the current light and keeps following from there.
+- The slider and the brightness keys always start from the real brightness.
+
+While it runs, GNOME's own automatic brightness and the dimming of the screen
+when idle are switched off. Both come back when it is removed. But they need
+to stay deactivated to not interfere with our implementation. A small GNOME
+Shell extension, KaiT2en Auto Brightness, keeps the slider in sync and is
+switched on by the service.
+
+The learned curve is in `~/.local/state/t2-autobrightness/curve`. Deleting
+it while the service is stopped starts again from the factory curve of the
+model. To see what it does, run
+`journalctl --user -u kait2en-t2-autobrightness -f`. Remove it in KaiT2en
+Update or with
+`sudo /usr/local/src/KaiT2en-Fedora/scripts/fedora/install-autobrightness.sh --remove`.
 
 ## T2 Hybrid GPU Control
 

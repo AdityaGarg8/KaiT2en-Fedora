@@ -62,8 +62,8 @@ Every step records the commit it was installed from in
 no records yet. The app then compares with your local checkout, and the first
 update from the app writes the records.
 
-The optional parts, T2 Touch Bar and KaiT2en Vornehm, are never added or
-removed by an update. Switch them in the Optional section of the app and
+The optional parts, T2 Touch Bar, Automatic brightness and KaiT2en Vornehm,
+are never added or removed by an update. Switch them in the Optional section of the app and
 press **Update**.
 
 ### Hybrid graphics and kernel updates

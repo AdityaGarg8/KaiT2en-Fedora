@@ -392,6 +392,22 @@ items:
       F-key rows, multitouch gestures for volume and brightness, the Touch ID
       prompt and track changes from media players.
 
+  - id: automatic-brightness
+    title: "Automatic brightness (ALS)"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2-autobrightness / ambient light sensor
+    authors:
+      - deqrocks
+    link: post-install/kait2en-applications.md
+    updated: "2026-10-27"
+    notes: >-
+      Optional service that follows the ambient light like macOS on Intel
+      Macs, with its smooth curve, 20 % dead band, slow perceptual fades
+      and learning from manual changes. Replaces GNOME's own automatic 
+      brightness, which flashbangs you with coarse steps.
+
   - id: imac-5k
     title: "5K display on iMac20,1 and iMac20,2"
     state: available

@@ -151,6 +151,15 @@ has_touch_bar() {
 	[[ "$model" == MacBookPro15,* || "$model" == MacBookPro16,* ]]
 }
 
+# T2 MacBooks with the ambient light sensor behind the T2. iMacs have one
+# too, but driving their panel is not verified yet.
+has_ambient_light_sensor() {
+	local model
+	[[ -r /sys/class/dmi/id/product_name ]] || return 1
+	read -r model </sys/class/dmi/id/product_name
+	[[ "$model" == MacBookPro15,* || "$model" == MacBookPro16,* || "$model" == MacBookAir8,* || "$model" == MacBookAir9,* ]]
+}
+
 require_command() {
 	local cmd
 	for cmd in "$@"; do

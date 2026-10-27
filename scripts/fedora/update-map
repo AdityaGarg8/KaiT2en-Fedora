@@ -41,4 +41,5 @@ install-t2-services-common.sh t2-services/shared/ packaging/lifecycle/
 install-t2-remote.sh          t2-services/t2-ave/Cargo.toml t2-services/t2-ave/Cargo.lock t2-services/t2-ave/Makefile t2-services/t2-ave/cli/ t2-services/t2-ave/daemon/ t2-services/t2-ave/integration/ t2-services/t2-ave/packaging/ t2-services/t2-ave/protocols/ packaging/lifecycle/
 install-touchid.sh            t2-services/t2-touchid/ packaging/lifecycle/
 rebuild-initramfs.sh
+install-autobrightness.sh     if=/usr/local/bin/t2-autobrightness t2-services/t2-autobrightness/
 install-vornehm.sh            if=~/.local/share/gnome-shell/extensions/kait2en-vornehm@kait2en assets/vornehm/
