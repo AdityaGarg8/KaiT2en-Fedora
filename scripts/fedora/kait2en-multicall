@@ -30,16 +30,14 @@ case ${0##*/} in
 		;;
 	update-modules)
 		refresh_repository
-		sudo bash "$repository/scripts/fedora/install-dkms-modules.sh"
-		sudo bash "$repository/scripts/fedora/install-kernel-source.sh"
-		sudo bash "$repository/scripts/fedora/install-gpu-runtime-pm.sh" install --defer-initramfs
-		sudo bash "$repository/scripts/fedora/install-wireless.sh" install --defer-initramfs
-		sudo bash "$repository/scripts/fedora/rebuild-initramfs.sh"
+		# install.sh appends the initramfs rebuild and records what was installed.
+		sudo bash "$repository/scripts/fedora/install.sh" --only \
+			install-dkms-modules.sh,install-kernel-source.sh,install-gpu-runtime-pm.sh,install-wireless.sh
 		printf 'Reboot to load the updated modules.\n'
 		;;
 	update-apps)
 		refresh_repository
-		exec sudo bash "$repository/scripts/fedora/install-apps.sh"
+		exec sudo bash "$repository/scripts/fedora/install.sh" --only install-apps.sh
 		;;
 	boot-macos)
 		entry=$(efibootmgr | sed -nE 's/^Boot([0-9A-Fa-f]{4})\*? .*CoreServices.*boot\.efi.*/\1/p' | head -n1)

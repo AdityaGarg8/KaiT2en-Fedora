@@ -204,6 +204,9 @@ wanted t2-journal && run_step "t2-journal" install_rust_app "$REPO_ROOT/t2-servi
 wanted gpu-control && run_step "GPU control" install_gpu_control
 run_step "remove t2-cpu-control" remove_t2_cpu_control
 wanted t2-zone-power && run_step "t2-zone-power" install_rust_app "$REPO_ROOT/apps/t2-zone-power" "t2-zone-power"
+if wanted kait2en-update; then
+	run_step "kait2en-update" install_rust_app "$REPO_ROOT/apps/kait2en-update" "kait2en-update"
+fi
 if ! wanted t2-kernel-builder; then
 	:
 elif "$REPO_ROOT/apps/t2-kernel-builder/install.sh"; then

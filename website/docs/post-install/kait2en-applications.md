@@ -3,8 +3,30 @@
 KAIT2EN includes several applications for monitoring and configuring T2 Mac
 hardware. The installer selects hardware-specific applications where
 necessary. Graphical apps show up in the app drawer after installation. T2
-Journal is used from a terminal. Their names always start with "T2", which
-makes them easy to find.
+Journal is used from a terminal. Their names start with "T2", which makes
+them easy to find. The updater is called KaiT2en Update.
+
+## KaiT2en Update
+
+Experimental. The previous way of updating with `kait2en-install` keeps
+working and stays the recommended one, see
+[How to update](updating.md).
+
+Compares your installation with GitHub and installs only what changed. A full
+run of the installer builds every app, every module and the initramfs again.
+Most updates only touch one or two of them.
+
+- Shows the local checkout, the state on GitHub and the new commits.
+- Lists the installer steps and apps whose sources changed, each with a
+  switch and the files that caused it. Unselected steps are offered again on
+  the next check.
+- Shows a restart hint when kernel modules or the initramfs were updated.
+- Offers to install everything when the installer itself changed.
+- Adds or removes the optional parts, T2 Touch Bar and KaiT2en Vornehm. A
+  switch only marks the change, Update carries it out.
+
+The installation runs through a restricted helper that asks for your password
+and only accepts the names of known installer steps and apps.
 
 ## T2 Fan Control
 

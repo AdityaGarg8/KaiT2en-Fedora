@@ -24,6 +24,18 @@ checkout with an unexpected Git remote. Its persistent files are:
 ~/.local/state/kait2en/install.log
 ```
 
+Every installer step and app records the commit it was last installed from,
+one file per step or app:
+
+```text
+/var/lib/kait2en-installer/applied/<step>
+/var/lib/kait2en-installer/applied/app:<app>
+```
+
+The experimental KaiT2en Update app compares these records with GitHub. It
+uses `scripts/fedora/update-map` from the checkout to tell which steps and
+apps have to run again. See [How to update](../post-install/updating.md).
+
 ## Multicall commands
 
 `install.sh` installs a helper script and links the short commands to it. The
@@ -305,8 +317,8 @@ outcome of the Bluetooth step is recorded in the installed system at:
 ## Applications
 
 `t2-fan-control`, `t2-smc-control`, `t2-power-explorer`, `t2-debug`,
-`t2-zone-power`, `t2-journal`, `kait2en-touchbar`, `kernel-builder`, and
-`t2-power-tune` are installed system-wide under `/usr/local`. `kait2en-touchbar` is optional and
+`t2-zone-power`, `t2-journal`, `kait2en-touchbar`, `kernel-builder`,
+`t2-power-tune` and `kait2en-update` are installed system-wide under `/usr/local`. `kait2en-touchbar` is optional and
 only installed when selected at the start of the installation.
 
 MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4 get
@@ -326,6 +338,7 @@ All KAIT2EN desktop applications use the shared header wordmark at
 | T2 Kernel Builder | `/usr/local/bin/t2-kernel-builder`, `/usr/local/libexec/t2-kernel-builder-cleanup`, `/usr/local/libexec/t2-kernel-builder/build.sh`, `/usr/local/libexec/t2-kernel-builder/configs/*.config`, `/usr/local/share/applications/org.t2kernelbuilder.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2kernelbuilder.gtk.svg`, `/usr/local/share/polkit-1/actions/org.t2kernelbuilder.gtk.policy` |
 | T2 Power Tune | `/usr/local/bin/t2-power-tune`, `/usr/local/libexec/t2-power-tune-helper`, `/usr/local/libexec/t2-power-tune-status`, `/usr/local/share/applications/org.t2powertune.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powertune.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powertune.policy` |
 | T2 Force Click | `/usr/local/bin/t2-force-click`, `/usr/local/share/applications/org.t2forceclick.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2forceclick.gtk.svg`, `/usr/local/lib/systemd/system/t2-force-click.service` |
+| KaiT2en Update | `/usr/local/bin/kait2en-update`, `/usr/local/libexec/kait2en-update-helper`, `/usr/local/share/applications/org.kait2enupdate.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.kait2enupdate.gtk.svg`, `/usr/share/polkit-1/actions/org.kait2enupdate.policy` |
 | T2 Debug | `/usr/local/bin/t2-debug`, `/usr/local/bin/t2debug`, `/usr/local/share/applications/org.t2debug.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2debug.gtk.svg` |
 | T2 Touch Bar | `/usr/local/bin/kait2en-touchbar`, `/usr/local/lib/systemd/user/kait2en-touchbar.service`, `/usr/local/lib/systemd/system/kait2en-touchbar-attach.service`, `/usr/local/lib/udev/rules.d/99-zz-kait2en-touchbar.rules`, `/etc/kait2en/touchbar.toml`, `/usr/local/share/licenses/kait2en-touchbar/THIRD-PARTY-NOTICES.md` |
 | T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy`, `/etc/environment.d/90-kait2en-gsk-renderer.conf` |

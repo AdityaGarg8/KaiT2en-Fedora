@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=KaiT2en Update
+Comment=Update KaiT2en and install only what changed
+Exec=/usr/local/bin/kait2en-update
+Icon=org.kait2enupdate.gtk
+Terminal=false
+Categories=System;Settings;
+Keywords=update;upgrade;install;T2;Mac;KaiT2en;
+StartupNotify=true

@@ -1,0 +1,133 @@
+/* KaiT2en app style. Self contained, it does not rely on any desktop theme. */
+
+/* The ground matches the file view of KaiT2en Vornehm, cards its sidebar.
+ * Set on the widgets, not on the named colors, so a desktop theme that
+ * redefines those colors cannot lighten the app.
+ */
+window.background,
+window.background > headerbar.titlebar {
+  background-color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  window.background,
+  window.background > headerbar.titlebar {
+    background-color: #151517;
+  }
+}
+
+/* Chrome rim along the top edge of the window */
+window.csd {
+  border-top: 1px solid RGB(255 255 255 / 70%);
+}
+
+@media (prefers-color-scheme: dark) {
+  window.csd {
+    border-top-color: RGB(255 255 255 / 24%);
+  }
+}
+
+window.csd.maximized,
+window.csd.tiled,
+window.csd.tiled-top,
+window.csd.tiled-left,
+window.csd.tiled-right,
+window.csd.tiled-bottom,
+window.csd.fullscreen {
+  border-top-width: 0;
+}
+
+/* Interface text is sans, measured values are mono with tabular digits */
+.kait2en-heading {
+  font-weight: 600;
+}
+
+.kait2en-key {
+  opacity: 0.62;
+}
+
+.kait2en-value {
+  font-family: "JetBrains Mono";
+  font-feature-settings: "tnum" 1;
+}
+
+.kait2en-meta {
+  font-size: smaller;
+  opacity: 0.62;
+}
+
+/* Cards hold the graphs, flat with a hairline */
+.kait2en-card {
+  border-radius: 10px;
+  background-color: #e2e2e8;
+  box-shadow: inset 0 0 0 1px RGB(0 0 0 / 8%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .kait2en-card {
+    background-color: #0d0d0f;
+    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 6%);
+  }
+}
+
+/* Text and lists as in SMC Control. Lists sit in the card tone. */
+window.background {
+  color: RGB(36 36 36 / 72%);
+}
+
+window.background .heading,
+window.background .title,
+window.background .title-4 {
+  color: #242424;
+  font-weight: 600;
+}
+
+.boxed-list {
+  border: none;
+  border-radius: 12px;
+  background-color: #e2e2e8;
+  box-shadow: inset 0 0 0 1px RGB(0 0 0 / 8%);
+}
+
+.boxed-list row {
+  background-color: transparent;
+}
+
+.donate-link,
+.donate-link > label {
+  color: RGB(36 36 36 / 72%);
+}
+
+@media (prefers-color-scheme: dark) {
+  window.background {
+    color: RGB(232 232 232 / 72%);
+  }
+
+  window.background .heading,
+  window.background .title,
+  window.background .title-4 {
+    color: #e8e8e8;
+  }
+
+  .boxed-list {
+    background-color: #0d0d0f;
+    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 6%);
+  }
+
+  .donate-link,
+  .donate-link > label {
+    color: RGB(232 232 232 / 72%);
+  }
+}
+
+/* The installer log, inside a card like the Kernel Builder log */
+.kait2en-log {
+  padding: 14px;
+}
+
+.kait2en-log textview,
+.kait2en-log textview > text {
+  background-color: transparent;
+  font-family: "JetBrains Mono";
+  font-size: smaller;
+}
