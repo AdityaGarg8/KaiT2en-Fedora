@@ -52,31 +52,41 @@ detect_role() {
 
 probe=$(mktemp -d /run/kait2en-macos-mount.XXXXXX) || exit 1
 mounted_any=0
+last_err=
 mkdir -p "$PARENT"
 
 # Internal APFS partitions only. External disks are left to the file manager,
 # and loop devices (mounted dmgs) are skipped so manual experiments are not
 # touched.
+# mount -i skips /sbin/mount.apfs. The apfs-fuse package installs that helper
+# and it would take over from the kernel module and fail on these containers.
 for dev in $(lsblk -lnpo PATH,FSTYPE,RM,TYPE |
 	awk '$2 == "apfs" && $3 == "0" && $4 == "part" { print $1 }'); do
 	vol=0
 	while [ "$vol" -le 9 ]; do
-		if mount -t apfs -o ro,vol="$vol" "$dev" "$probe" 2>/dev/null; then
+		if err=$(mount -i -t apfs -o ro,vol="$vol" "$dev" "$probe" 2>&1); then
 			role=$(detect_role "$probe")
 			umount "$probe"
 			if [ -n "$role" ] && ! mountpoint -q "$PARENT/$role"; then
 				mkdir -p "$PARENT/$role"
-				if mount -t apfs -o ro,vol="$vol" "$dev" "$PARENT/$role"; then
+				if mount -i -t apfs -o ro,vol="$vol" "$dev" "$PARENT/$role"; then
 					mounted_any=1
 				fi
 			fi
+		else
+			last_err="$dev vol=$vol: $err"
 		fi
 		vol=$((vol + 1))
 	done
 done
 
 rmdir "$probe"
-[ "$mounted_any" = 1 ] || echo "no readable macOS volume found" >&2
+# Probing fails on purpose for the encrypted and the missing volumes, so the
+# errors only surface when nothing could be mounted at all.
+if [ "$mounted_any" != 1 ]; then
+	echo "no readable macOS volume found" >&2
+	[ -n "$last_err" ] && echo "last error: $last_err" >&2
+fi
 exit 0
 EOF
 chmod 0755 /usr/local/libexec/kait2en/kait2en-macos-mount
