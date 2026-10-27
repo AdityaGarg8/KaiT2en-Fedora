@@ -67,20 +67,17 @@ any register access after the GPU was runtime suspended for GMUX power-off.
  	pcie_index = adev->nbio.funcs->get_pcie_index_offset(adev);
  	pcie_data = adev->nbio.funcs->get_pcie_data_offset(adev);
  
-@@ -677,6 +680,12 @@
+@@ -677,6 +680,9 @@
  	void __iomem *pcie_data_offset;
  	u64 r;
  
 +	if (amdgpu_device_skip_hw_access(adev))
 +		return 0;
 +
-+	if (amdgpu_device_skip_hw_access(adev))
-+		return 0;
-+
  	pcie_index = adev->nbio.funcs->get_pcie_index_offset(adev);
  	pcie_data = adev->nbio.funcs->get_pcie_data_offset(adev);
  
-@@ -706,6 +715,9 @@
+@@ -706,6 +712,9 @@
  	void __iomem *pcie_data_offset;
  	u64 r;
  
@@ -90,7 +87,7 @@ any register access after the GPU was runtime suspended for GMUX power-off.
  	pcie_index = adev->nbio.funcs->get_pcie_index_offset(adev);
  	pcie_data = adev->nbio.funcs->get_pcie_data_offset(adev);
  	if ((reg_addr >> 32) && (adev->nbio.funcs->get_pcie_index_hi_offset))
-@@ -762,6 +774,9 @@
+@@ -762,6 +771,9 @@
  	void __iomem *pcie_index_offset;
  	void __iomem *pcie_data_offset;
  
@@ -100,7 +97,7 @@ any register access after the GPU was runtime suspended for GMUX power-off.
  	pcie_index = adev->nbio.funcs->get_pcie_index_offset(adev);
  	pcie_data = adev->nbio.funcs->get_pcie_data_offset(adev);
  
-@@ -784,6 +799,9 @@
+@@ -784,6 +796,9 @@
  	void __iomem *pcie_index_hi_offset;
  	void __iomem *pcie_data_offset;
  
@@ -110,7 +107,7 @@ any register access after the GPU was runtime suspended for GMUX power-off.
  	pcie_index = adev->nbio.funcs->get_pcie_index_offset(adev);
  	pcie_data = adev->nbio.funcs->get_pcie_data_offset(adev);
  	if ((reg_addr >> 32) && (adev->nbio.funcs->get_pcie_index_hi_offset))
-@@ -832,6 +850,9 @@
+@@ -832,6 +847,9 @@
  	void __iomem *pcie_index_offset;
  	void __iomem *pcie_data_offset;
  
@@ -120,7 +117,7 @@ any register access after the GPU was runtime suspended for GMUX power-off.
  	pcie_index = adev->nbio.funcs->get_pcie_index_offset(adev);
  	pcie_data = adev->nbio.funcs->get_pcie_data_offset(adev);
  
-@@ -861,6 +882,9 @@
+@@ -861,6 +879,9 @@
  	void __iomem *pcie_index_hi_offset;
  	void __iomem *pcie_data_offset;
  
