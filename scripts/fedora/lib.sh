@@ -97,6 +97,17 @@ info() {
 	printf '[kait2en] %s\n' "$*"
 }
 
+# Records the commit a step or app was last installed from.
+# kait2en-update compares it with GitHub to pick what has to run again.
+KAIT2EN_APPLIED_DIR=${KAIT2EN_APPLIED_DIR:-/var/lib/kait2en-installer/applied}
+mark_applied() {
+	local name=$1 commit
+	commit=$(git -c safe.directory="$REPO_ROOT" -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null) || return 0
+	install -d -m 0755 "$KAIT2EN_APPLIED_DIR" &&
+		printf '%s\n' "$commit" >"$KAIT2EN_APPLIED_DIR/$name" ||
+		printf '[kait2en] warning: cannot record %s as installed\n' "$name" >&2
+}
+
 warn() {
 	printf '[kait2en] warning: %s\n' "$*" >&2
 	printf '%s: warning: %s\n' "${0##*/}" "$*" >>"$KAIT2EN_INSTALL_ERRORS" ||

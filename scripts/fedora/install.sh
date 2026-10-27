@@ -7,6 +7,32 @@ require_repo_root
 require_fedora
 require_min_kernel 7 0
 
+# --only step,step runs just those steps, as kait2en-update does after it
+# compared the installed state with GitHub. Optional parts then keep what is
+# installed, no question is asked.
+ONLY_STEPS=()
+if [[ ${1:-} == --only ]]; then
+	[[ -n ${2:-} ]] || fail "usage: install.sh [--only step,step,...]"
+	IFS=, read -r -a ONLY_STEPS <<<"$2"
+	if [[ -z "${KAIT2EN_INSTALL_TOUCHBAR:-}" ]]; then
+		KAIT2EN_INSTALL_TOUCHBAR=0
+		[[ -x /usr/local/bin/kait2en-touchbar ]] && KAIT2EN_INSTALL_TOUCHBAR=1
+	fi
+	KAIT2EN_INSTALL_VORNEHM=0
+elif (( $# > 0 )); then
+	fail "usage: install.sh [--only step,step,...]"
+fi
+
+selected() {
+	local step
+	(( ${#ONLY_STEPS[@]} == 0 )) && return 0
+	for step in "${ONLY_STEPS[@]}"; do
+		[[ "$step" == "$1" ]] && return 0
+	done
+	return 1
+}
+selected install-vornehm.sh && (( ${#ONLY_STEPS[@]} > 0 )) && KAIT2EN_INSTALL_VORNEHM=1
+
 # Asked before anything runs so the rest of the installation is unattended.
 # KAIT2EN_INSTALL_TOUCHBAR=1|0 answers it ahead of time. Without a terminal
 # the previous default (install) is kept.
@@ -167,7 +193,10 @@ install_multicall() {
 	ln -sfn kait2en-multicall /usr/local/bin/update-modules
 	ln -sfn kait2en-multicall /usr/local/bin/update-apps
 }
-run_step "install command helpers" install_multicall
+if selected command-helpers; then
+	run_step "install command helpers" install_multicall
+	(( STEP_STATUS == 0 )) && mark_applied command-helpers
+fi
 
 STEPS=(
 	install-dependencies.sh
@@ -191,8 +220,27 @@ STEPS=(
 	rebuild-initramfs.sh
 )
 
+# Steps whose files end up in the initramfs. A selective run that includes
+# one of them rebuilds the initramfs as well.
+INITRAMFS_STEPS=(
+	install-dkms-modules.sh
+	install-gpu-runtime-pm.sh
+	install-wireless.sh
+	install-acpi-fixes.sh
+	install-plymouth-theme.sh
+)
+if (( ${#ONLY_STEPS[@]} > 0 )); then
+	for step in "${INITRAMFS_STEPS[@]}"; do
+		if selected "$step"; then
+			ONLY_STEPS+=(rebuild-initramfs.sh)
+			break
+		fi
+	done
+fi
+
 failed_steps=()
 for step in "${STEPS[@]}"; do
+	selected "$step" || continue
 	info "running $step"
 	if [[ "$step" == install-plymouth-theme.sh ]]; then
 		step_args=(--defer-initramfs)
@@ -205,13 +253,19 @@ for step in "${STEPS[@]}"; do
 	run_step "$step" bash "$SCRIPT_DIR/$step" "${step_args[@]}"
 	if (( STEP_STATUS != 0 )); then
 		failed_steps+=("$step")
+	elif [[ "$step" != install-apps.sh ]]; then
+		mark_applied "$step"
 	fi
 done
 
 if [[ $KAIT2EN_INSTALL_VORNEHM == 1 ]]; then
 	run_step "KaiT2en Vornehm for $VORNEHM_USER" install_vornehm
-	(( STEP_STATUS == 0 )) || failed_steps+=(install-vornehm.sh)
-elif [[ -n "$VORNEHM_USER" && "$VORNEHM_USER" != root ]] && command -v gnome-shell >/dev/null 2>&1; then
+	if (( STEP_STATUS == 0 )); then
+		mark_applied install-vornehm.sh
+	else
+		failed_steps+=(install-vornehm.sh)
+	fi
+elif (( ${#ONLY_STEPS[@]} == 0 )) && [[ -n "$VORNEHM_USER" && "$VORNEHM_USER" != root ]] && command -v gnome-shell >/dev/null 2>&1; then
 	info "KaiT2en Vornehm not selected; add it later with: $SCRIPT_DIR/install-vornehm.sh"
 fi
 
