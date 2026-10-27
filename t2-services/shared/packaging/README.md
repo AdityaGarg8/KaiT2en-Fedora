@@ -65,9 +65,10 @@ common suspend unit. Package upgrades never invoke sleep hooks.
 
 The common package migrates known combined suspend helpers to the current
 Wi-Fi/Bluetooth-only implementation. That independent helper stays with the
-OS installation, it is not removed together with the T2 services. NCM profiles
-are consolidated on disk while preserving the selected source profile's UUID.
-Unrelated profiles are untouched. No live network disconnect is issued.
+OS installation, it is not removed together with the T2 services. T2 NCM
+link-local profiles are retired on disk, the link is unmanaged by NetworkManager
+from the next boot. Custom and unrelated profiles are untouched. No live network
+disconnect is issued.
 
 Ownership receipts live in `/var/lib/kait2en/ownership/<package>.json`.
 Recoverable migration backups live in `/var/lib/kait2en/migration/<package>/`.

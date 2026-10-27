@@ -11,6 +11,7 @@ BuildRequires: systemd-rpm-macros
 BuildArch: noarch
 Requires: NetworkManager
 Requires: systemd
+Requires: systemd-udev
 Requires: iproute
 Requires: iputils
 Requires: coreutils
@@ -31,7 +32,7 @@ bash -n t2-services/shared/integration/libexec/t2-ncm-sleep
 python3 -m unittest discover -s packaging/lifecycle -v
 
 %install
-make -C t2-services/shared install PREFIX=/usr DESTDIR=%{buildroot} SYSTEMD_UNIT_DIR=%{_unitdir} LIBEXECDIR=%{_libexecdir}
+make -C t2-services/shared install PREFIX=/usr DESTDIR=%{buildroot} SYSTEMD_UNIT_DIR=%{_unitdir} LIBEXECDIR=%{_libexecdir} UDEV_RULES_DIR=%{_udevrulesdir}
 
 %post -p /bin/bash
 if source %{_libexecdir}/t2-services/package-actions; then
@@ -79,4 +80,4 @@ exit 0
 %{_libexecdir}/t2-services/migration/
 %{_unitdir}/t2-services-suspend.service
 %config(noreplace) /etc/NetworkManager/conf.d/10-t2-services.conf
-%config(noreplace) %attr(0600,root,root) /etc/NetworkManager/system-connections/t2-ncm.nmconnection
+%{_udevrulesdir}/90-t2-services-ncm.rules

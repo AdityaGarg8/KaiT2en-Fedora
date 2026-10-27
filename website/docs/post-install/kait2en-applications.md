@@ -80,7 +80,7 @@ it shows the devices in a collapsible tree view.
 
 ## T2 Journal
 
-Fetches Apple T2 bridgeOS logs over the internal `Apple T2 Bridge` network
+Fetches Apple T2 bridgeOS logs over the internal T2 network
 link and merges them chronologically with the Linux journal. It can select one
 boot or all retained boots, filter by regular expression or source, and emit
 text or JSONL. The first query downloads a BridgeOS snapshot automatically; use
@@ -108,7 +108,7 @@ Run `t2journal --help` for all filtering and refresh options.
 ## T2 Debug
 
 A live window into the T2's own operating system (bridgeOS), over the internal
-`Apple T2 Bridge` link. It talks to the T2's built-in Instruments diagnostic
+T2 network link. It talks to the T2's built-in Instruments diagnostic
 service and is read-only: it observes, it changes nothing.
 
 Two tabs:

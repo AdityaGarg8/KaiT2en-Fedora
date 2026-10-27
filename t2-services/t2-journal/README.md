@@ -6,9 +6,9 @@ Linux boot. The application keeps one parsed BridgeOS snapshot until you run
 
 ## T2 link
 
-The T2 is reached over the `Apple T2 Bridge` NetworkManager profile that
-`scripts/fedora/install-t2-services-common.sh` configures on the internal
-CDC-NCM interface, which survives suspend on its own. Journal connects
+The T2 is reached over the internal CDC-NCM interface, which
+`t2-services-common` brings up outside NetworkManager with an IPv6 link-local
+address. It survives suspend on its own. Journal connects
 directly through the shared BridgeXPC library. Neither the AVE daemon nor
 Touch ID is required.
 

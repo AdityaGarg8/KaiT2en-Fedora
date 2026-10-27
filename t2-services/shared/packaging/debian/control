@@ -8,7 +8,7 @@ Rules-Requires-Root: no
 
 Package: t2-services-common
 Architecture: all
-Depends: ${misc:Depends}, ${shlibs:Depends}, network-manager, systemd, iproute2, iputils-ping, coreutils, bash, python3
+Depends: ${misc:Depends}, ${shlibs:Depends}, network-manager, systemd, udev, iproute2, iputils-ping, coreutils, bash, python3
 Description: Shared Apple T2 network and suspend integration
  Independently packaged T2 functionality. See /usr/share/doc/t2-services-common
  for hardware and integration requirements.

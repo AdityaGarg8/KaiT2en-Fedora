@@ -2,7 +2,7 @@ PREFIX ?= /usr/local
 LIBEXECDIR ?= $(PREFIX)/libexec
 SYSTEMD_UNIT_DIR ?= $(PREFIX)/lib/systemd/system
 SYSCONFDIR ?= /etc
-INSTALL_NETWORK_PROFILE ?= yes
+UDEV_RULES_DIR ?= $(PREFIX)/lib/udev/rules.d
 
 .PHONY: all install
 all:
@@ -17,5 +17,4 @@ install:
 	sed 's|@LIBEXECDIR@|$(LIBEXECDIR)|g' integration/systemd/t2-services-suspend.service >$(DESTDIR)$(SYSTEMD_UNIT_DIR)/t2-services-suspend.service
 	chmod 0644 $(DESTDIR)$(SYSTEMD_UNIT_DIR)/t2-services-suspend.service
 	install -D -m 0644 integration/NetworkManager/10-t2-services.conf $(DESTDIR)$(SYSCONFDIR)/NetworkManager/conf.d/10-t2-services.conf
-	install -d -m 0700 $(DESTDIR)$(SYSCONFDIR)/NetworkManager/system-connections
-	if test "$(INSTALL_NETWORK_PROFILE)" = yes; then test -e $(DESTDIR)$(SYSCONFDIR)/NetworkManager/system-connections/t2-ncm.nmconnection || install -m 0600 integration/NetworkManager/t2-ncm.nmconnection $(DESTDIR)$(SYSCONFDIR)/NetworkManager/system-connections/t2-ncm.nmconnection; fi
+	install -D -m 0644 integration/udev/90-t2-services-ncm.rules $(DESTDIR)$(UDEV_RULES_DIR)/90-t2-services-ncm.rules

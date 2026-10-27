@@ -6,7 +6,8 @@ This directory owns the transport and system integration used by `t2-touchid`,
 | Directory | Responsibility |
 | --- | --- |
 | `protocols/t2-bridgexpc/` | Rust library for discovery, RemoteXPC and BridgeXPC over the internal CDC-NCM link |
-| `integration/NetworkManager/` | IPv6 link-local connection profile and prevention of automatically generated duplicate profiles |
+| `integration/NetworkManager/` | Keeps NetworkManager away from the internal CDC-NCM link and stops it auto-creating profiles for it |
+| `integration/udev/` | Brings the CDC-NCM link up with kernel generated IPv6 link-local addressing |
 | `integration/systemd/` | Common suspend/resume unit |
 | `integration/libexec/` | Feature sleep/resume hook runner and error collection for package lifecycle actions |
 | `packaging/` | RPM and Debian recipes for `t2-services-common` |
@@ -44,15 +45,25 @@ a distribution package with:
 make install PREFIX=/usr DESTDIR=/tmp/t2-common-package
 ```
 
-`LIBEXECDIR`, `SYSTEMD_UNIT_DIR` and `SYSCONFDIR` can be overridden. The default
-prefix is `/usr/local`. Installation substitutes the helper path in the systemd
-unit and preserves an existing `t2-ncm.nmconnection`. It does not start services
-or change the live network.
+`LIBEXECDIR`, `SYSTEMD_UNIT_DIR`, `SYSCONFDIR` and `UDEV_RULES_DIR` can be
+overridden. The default prefix is `/usr/local`. Installation substitutes the
+helper path in the systemd unit. It does not start services or change the live
+network.
 
-The Fedora source installer uses `INSTALL_NETWORK_PROFILE=no` while migrating
-existing profiles through `scripts/fedora/install-t2-services-common.sh`.
-Network profile migration belongs to that installer. WLAN and Bluetooth
-handling remain separate.
+## T2 link
+
+The internal CDC-NCM link (USB `05ac:8233`) is unmanaged by NetworkManager.
+`90-t2-services-ncm.rules` brings it up when it appears, and the kernel assigns
+the IPv6 link-local address the services use. NetworkManager would otherwise
+take the link down on `PrepareForSleep`, before `t2-services-suspend.service`
+runs. The AVE hook could then no longer close its T2 sessions, and bridgeOS
+would drop the SideCar device while the host sleeps, which kills `t2bce_vhci`
+on resume.
+
+The Fedora source installer, `scripts/fedora/install-t2-services-common.sh`,
+deletes the files of the former `Apple T2 Bridge` profile and of profiles
+NetworkManager auto-created for the link. The live connection keeps running
+until the next boot. WLAN and Bluetooth handling remain separate.
 
 Build or test the transport library independently with:
 

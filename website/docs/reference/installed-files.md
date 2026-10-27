@@ -233,7 +233,8 @@ audio behavior and diagnostics.
 | `/usr/local/libexec/t2-services/sleep.d/t2-ave` | Closes/reopens sessions only when the AVE daemon is running |
 | `/etc/systemd/system/kait2en-t2-remote.service` | Loads `t2bce_ave` and runs `t2remote`, which holds the bridgeOS services Linux uses, currently `com.apple.aveservice` for the video encoder |
 | `/usr/local/bin/t2remote` | RemoteXPC service manager; `t2remote status` shows the live services. Listens on `/run/t2remote.sock` |
-| NetworkManager profile `Apple T2 Bridge` | IPv6 link-local connection to the T2 over its internal CDC-NCM interface, bound to the interface's MAC address. Replaces the earlier `t2_ncm` udev rule |
+| `/etc/NetworkManager/conf.d/10-t2-services.conf` | Keeps NetworkManager away from the internal CDC-NCM interface to the T2, so it stays up until the suspend hooks have closed their T2 sessions. Replaces the former `Apple T2 Bridge` profile |
+| `/usr/local/lib/udev/rules.d/90-t2-services-ncm.rules` | Brings the internal CDC-NCM interface up with an IPv6 link-local address |
 | `/etc/modprobe.d/kait2en-silent-blacklist.conf` | Silently ignores attempts to load drivers replaced by KAIT2EN modules |
 | `/usr/share/plymouth/themes/kait2en/` | Boot splash in the KaiT2en Vornehm style, the silver kanji above a slim progress bar |
 | `/etc/plymouth/plymouthd.conf` | Selects the KAIT2EN theme, pins `DeviceScale=1` and sets `UseSimpledrm=0` so the splash does not resize when i915 replaces the 2880x1800 EFI framebuffer |

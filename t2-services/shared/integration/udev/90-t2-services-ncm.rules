@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Internal T2 CDC-NCM link (05ac:8233). NetworkManager leaves it unmanaged, see
+# 10-t2-services.conf, so it stays up while the suspend hooks close their T2
+# sessions. Bring it up here with kernel generated IPv6 link-local addressing.
+ACTION=="add", SUBSYSTEM=="net", ENV{ID_BUS}=="usb", ENV{ID_VENDOR_ID}=="05ac", ENV{ID_MODEL_ID}=="8233", ENV{ID_USB_DRIVER}=="cdc_ncm", RUN+="/usr/sbin/ip link set dev $name addrgenmode eui64", RUN+="/usr/sbin/ip link set dev $name up"

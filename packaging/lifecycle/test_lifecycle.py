@@ -163,22 +163,32 @@ class Tests(unittest.TestCase):
         self.assertFalse(any("-r" in args for args in calls))
         self.assertTrue(engine.errors)
 
-    def test_network_preserves_uuid_and_unrelated_profiles(self):
-        def profile(uuid, mac="AC:DE:48:00:11:22"):
-            return f"[connection]\nid=Apple T2 Bridge\nuuid={uuid}\n[ethernet]\nmac-address={mac}\n[ipv4]\nmethod=disabled\n[ipv6]\nmethod=link-local\n"
+    def test_network_retires_t2_profiles_and_keeps_others(self):
+        def profile(uuid, mac="AC:DE:48:00:11:22", name="Apple T2 Bridge", ipv6="link-local"):
+            return f"[connection]\nid={name}\nuuid={uuid}\n[ethernet]\nmac-address={mac}\n[ipv4]\nmethod=disabled\n[ipv6]\nmethod={ipv6}\n"
         base = "/etc/NetworkManager/system-connections/"
-        self.put(base + "t2-ncm.nmconnection", profile("6ab6bd67-a58f-47a6-a7c5-b03c2de64f2b"))
-        self.put(base + "old.nmconnection", profile("existing-user-uuid"))
+        broken = self.put(base + "0-broken.nmconnection", "[wifi]\nssid=a\nssid=b\n")
+        canonical = self.put(base + "t2-ncm.nmconnection", profile("6ab6bd67-a58f-47a6-a7c5-b03c2de64f2b"))
+        renamed = self.put(base + "Kabelgebundene Verbindung 2.nmconnection", profile("existing-user-uuid"))
+        unknown = self.put(base + "unknown.nmconnection", profile("unknown", name="Wired"))
+        custom = self.put(base + "custom.nmconnection", profile("custom", ipv6="manual"))
         other = self.put(base + "other.nmconnection", profile("other", "12:34:56:78:90:00"))
         engine = self.engine("t2-services-common")
+        engine.state["created"][base + "t2-ncm.nmconnection"] = "stale"
         engine.migrate_network()
-        canonical = self.root / (base + "t2-ncm.nmconnection").lstrip("/")
-        self.assertIn("existing-user-uuid", canonical.read_text())
-        self.assertFalse((self.root / (base + "old.nmconnection").lstrip("/")).exists())
+        self.assertTrue(broken.exists())
+        self.assertTrue(any("0-broken.nmconnection" in error for error in engine.errors))
+        self.assertFalse(canonical.exists())
+        self.assertFalse(renamed.exists())
+        self.assertFalse(unknown.exists())
+        self.assertTrue(custom.exists())
         self.assertTrue(other.exists())
+        self.assertNotIn(base + "t2-ncm.nmconnection", engine.state["created"])
+        unverified = [r for r in engine.state["retired"].values() if not r["verified"]]
+        self.assertEqual([base + "unknown.nmconnection"], [r["original"] for r in unverified])
         engine.migrate_network()
         engine.remove()
-        self.assertFalse(canonical.exists())
+        self.assertTrue(custom.exists())
         self.assertTrue(other.exists())
 
     def test_dsp_old_data_and_backups_cleaned_on_remove(self):

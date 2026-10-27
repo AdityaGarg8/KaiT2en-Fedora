@@ -191,6 +191,8 @@ class Lifecycle:
             for suffix in ("lifecycle.py", "migration/kait2en-suspend.sh", "migration/suspend-hashes.json"):
                 self.attempt(self.compare_retire, f"/usr/local/libexec/t2-services/{suffix}",
                              f"/usr/libexec/t2-services/{suffix}")
+            self.attempt(self.compare_retire, "/usr/local/lib/udev/rules.d/90-t2-services-ncm.rules",
+                         "/usr/lib/udev/rules.d/90-t2-services-ncm.rules")
             self.attempt(self.migrate_suspend)
             self.attempt(self.migrate_network)
             for name, markers in (
@@ -354,43 +356,32 @@ class Lifecycle:
         self.atomic(self.path(old), replacement, 0o755)
 
     def migrate_network(self):
+        # NetworkManager leaves the NCM link unmanaged and udev brings it up,
+        # so every T2 link-local profile is retired, whatever its file name.
         folder = self.path("/etc/NetworkManager/system-connections")
-        canonical = folder / "t2-ncm.nmconnection"
-        candidates = []
         for path in sorted(folder.glob("*.nmconnection")):
-            path = self.path("/etc/NetworkManager/system-connections/" + path.name)
-            parser = configparser.ConfigParser(interpolation=None)
-            parser.read_string(path.read_text())
-            mac = parser.get("ethernet", "mac-address", fallback="").lower()
-            if mac != "ac:de:48:00:11:22":
-                continue
-            if parser.get("ipv4", "method", fallback="") != "disabled" or parser.get("ipv6", "method", fallback="") != "link-local":
-                self.error(f"custom T2 network profile preserved: {path.name}")
-                continue
-            candidates.append((path, parser))
-        # Prefer an existing script profile over the package's default UUID.
-        legacy = [(p, c) for p, c in candidates if p != canonical]
-        if legacy:
-            if canonical.exists():
-                existing = configparser.ConfigParser(interpolation=None)
-                existing.read_string(canonical.read_text())
-                uuid = existing.get("connection", "uuid", fallback="")
-                if uuid != "6ab6bd67-a58f-47a6-a7c5-b03c2de64f2b" and self.state["created"].get(
-                        "/etc/NetworkManager/system-connections/t2-ncm.nmconnection") != digest(canonical.read_bytes()):
-                    raise ValueError("existing canonical NCM profile is administrator-owned. Preserving it and other profiles")
-            selected, config = next(((p, c) for p, c in legacy
-                if c.get("connection", "id", fallback="") == "Apple T2 Bridge"), legacy[0])
-            if canonical.exists():
-                self.retire("/etc/NetworkManager/system-connections/t2-ncm.nmconnection", True)
-            data = selected.read_bytes()
-            self.atomic(canonical, data, 0o600)
-            self.state["created"]["/etc/NetworkManager/system-connections/t2-ncm.nmconnection"] = digest(data)
-            self.save()
-            for path, config in legacy:
-                name = "/etc/NetworkManager/system-connections/" + path.name
-                known_name = config.get("connection", "id", fallback="") in ("Apple T2 Bridge", "kait2en-t2-ncm")
-                self.attempt(self.retire, name, known_name)
-        # Do not disconnect or reload live connections. New files apply on boot.
+            # One unreadable profile must not keep the others from migrating.
+            self.attempt(self.retire_network_profile, "/etc/NetworkManager/system-connections/" + path.name)
+        self.state["created"].pop("/etc/NetworkManager/system-connections/t2-ncm.nmconnection", None)
+        self.save()
+        # Do not disconnect or reload live connections. The change applies on boot.
+
+    def retire_network_profile(self, name):
+        data = self.path(name).read_bytes()
+        parser = configparser.ConfigParser(interpolation=None)
+        try:
+            parser.read_string(data.decode())
+        except (UnicodeDecodeError, configparser.Error) as exc:
+            raise ValueError(f"unreadable network profile preserved: {name}: {exc}") from exc
+        mac = parser.get("ethernet", "mac-address", fallback="").lower()
+        if mac != "ac:de:48:00:11:22" and parser.get("connection", "interface-name", fallback="") != "t2_ncm":
+            return
+        if parser.get("ipv4", "method", fallback="") != "disabled" or parser.get("ipv6", "method", fallback="") != "link-local":
+            self.error(f"custom T2 network profile preserved: {name}")
+            return
+        known = (parser.get("connection", "id", fallback="") in ("Apple T2 Bridge", "kait2en-t2-ncm")
+                 or self.state["created"].get(name) == digest(data))
+        self.retire(name, known)
 
     def enable_pam(self):
         current = self.command("authselect", "current", "--raw").split()
@@ -483,6 +474,7 @@ class Lifecycle:
             names.extend("/usr/local/libexec/t2-services/" + suffix for suffix in (
                 "t2-ncm-sleep", "package-actions", "lifecycle.py",
                 "migration/kait2en-suspend.sh", "migration/suspend-hashes.json"))
+            names.append("/usr/local/lib/udev/rules.d/90-t2-services-ncm.rules")
         self.state["source_files"] = {name: digest(self.path(name).read_bytes()) for name in names}
         self.save()
 
