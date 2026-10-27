@@ -12,7 +12,7 @@ command-helpers               scripts/fedora/kait2en-multicall
 install-dependencies.sh
 install-kernel-args.sh
 install-dkms-modules.sh       modules/ t2-services/t2-ave/kernel/ third-party/linux-apfs-rw/
-install-kernel-source.sh      patches/
+install-kernel-source.sh
 install-macos-mount.sh
 install-gpu-runtime-pm.sh     patches/runtime/gpu-runtime-pm/
 install-wireless.sh           patches/runtime/wireless/
