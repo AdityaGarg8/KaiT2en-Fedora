@@ -218,6 +218,38 @@ Used on supported MacBook Pro models with Intel and AMD graphics. It selects
 the primary GPU for the next boot and can power down the unused discrete GPU
 or enable AMDGPU's power-saving profile.
 
+## T2 Share
+
+Receives files and links from Android phones with Quick Share, the sharing
+feature built into Android. Phone and Mac have to be in the same Wi-Fi. Only
+receiving is supported so far, sending from the Mac and iPhones are not.
+
+- Open T2 Share and switch on "Visible to nearby phones". This starts the
+  user service `t2-share.service`, which also runs after the next login.
+- On the phone, choose Share, then Quick Share, then the name of the Mac.
+  The Mac shows up with its hostname.
+- A phone that is not trusted yet raises a notification with the files, the
+  PIN and the buttons Accept, Always trust and Decline. The PIN matches the
+  one on the phone. Without an answer the transfer is declined after 60
+  seconds.
+- Files go to the Downloads folder, the window lets you choose another one.
+  "Show in folder" in the notification opens the folder with the files
+  selected.
+
+Always trust accepts later transfers from that phone without asking. Quick
+Share gives a phone no fixed identity outside of Google's contact feature,
+so T2 Share recognizes a trusted phone by its device name only. Give your
+phone a unique name that is hard to guess, on Android under Settings, About
+phone, Device name. Trusted devices are listed in the window and can be
+removed there.
+
+If that is not secure enough for you, leave T2 Share switched off or stop
+the service with
+
+```bash
+systemctl --user disable --now t2-share.service
+```
+
 ## T2 Kernel Builder
 
 Provides a graphical workflow for building customized Fedora kernels with the

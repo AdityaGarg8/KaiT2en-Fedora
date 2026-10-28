@@ -45,6 +45,12 @@ requirement and adds no restriction beyond section 7(b).
   tiny-dfr. Its MIT notice is preserved in
   `apps/t2-touchbar/THIRD-PARTY-NOTICES.md`; the combined KAIT2EN program is
   distributed under GPL-3.0-or-later.
+- `apps/t2-share/proto/` holds the Nearby protobuf definitions, Apache-2.0
+  (Google LLC) and BSD-style (The Chromium Authors) with their license texts
+  next to them. Parts of `apps/t2-share/src/secure.rs` and
+  `apps/t2-share/src/receive.rs` are adapted from rquickshare (GPL-3.0). The
+  notices are in `apps/t2-share/THIRD-PARTY-NOTICES.md`, the combined
+  KAIT2EN program is distributed under GPL-3.0-or-later.
 - The wallpapers in `assets/vornehm/backgrounds/` are from the BLACK
   collection by Jean-Marc Denis (https://jmd.im/black), © Jean-Marc Denis.
   They are not covered by the KaiT2en licenses. No redistribution license is

@@ -500,3 +500,46 @@ items:
       NetworkManager asked for power save without a timeout. It now uses
       200 ms, the value Apple configures for the BCM4364. Idle system power
       on the MacBookPro15,1 dropped from 11.3 W to 9.2 W with Wi-Fi connected.
+
+  - id: brcmfmac-fwcap-whole-words
+    title: "No more Wi-Fi P2P errors on BCM4364"
+    state: available
+    upstream: preparing
+    project: KAIT2EN Fedora
+    subsystem: Wi-Fi / brcmfmac
+    authors:
+      - deqrocks
+    updated: "2026-10-28"
+    notes: >-
+      brcmfmac searched the firmware capability list for "p2p" as a substring
+      and found it in Apple's "hp2p". It then offered Wi-Fi Direct, which the
+      BCM4364 firmware does not support, and every boot logged three P2P
+      errors. Capabilities are now matched as whole words.
+
+  - id: brcmfmac-bcm4364-ap-fwauth
+    title: "Wi-Fi hotspot clients can connect on BCM4364"
+    state: available
+    upstream: preparing
+    project: KAIT2EN Fedora
+    subsystem: Wi-Fi / brcmfmac
+    authors:
+      - deqrocks
+    updated: "2026-10-28"
+    notes: >-
+      The BCM4364 firmware claims to run the WPA2 handshake for its access
+      point, but never completes it, so phones were dropped after about
+      8 seconds. brcmfmac now leaves the handshake to wpa_supplicant or
+      hostapd. Tested with a WPA2-PSK hotspot without PSK-SHA256.
+
+  - id: t2-share
+    title: "Receive files from Android phones with Quick Share"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2-share
+    authors:
+      - deqrocks
+    link: post-install/kait2en-applications.md
+    updated: "2026-10-28"
+    notes: >-
+      Quick Share support for receiving files from phone on your T2 Mac.
