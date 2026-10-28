@@ -228,6 +228,7 @@ audio behavior and diagnostics.
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
 | `/etc/systemd/system/kait2en-macos-mount.service` | Mounts the readable macOS volumes read-only under `/media/macOS` at boot |
 | `/usr/local/libexec/kait2en/kait2en-macos-mount` | Finds the readable volumes in the internal APFS container and mounts them as subdirectories by role |
+| `/etc/udev/rules.d/90-kait2en-macos.rules` | Names the internal APFS partition macOS in file managers |
 | `/etc/systemd/system/t2-services-suspend.service` | Runs feature sleep/resume hooks around sleep |
 | `/usr/local/libexec/t2-services/t2-ncm-sleep` | Runs installed feature hooks before sleep and after resume |
 | `/usr/local/libexec/t2-services/sleep.d/t2-ave` | Closes/reopens sessions only when the AVE daemon is running |
@@ -274,8 +275,9 @@ marker contains the table's current SHA-256 checksum. Existing unmarked tables
 and modified managed tables are left unchanged and reported as conflicts.
 
 `kait2en-macos-mount.service` is enabled on every installation. At boot the
-helper loads `apfs` and probes each volume of every internal APFS partition
-read-only in turn. Every readable volume is mounted as a subdirectory of the
+helper loads `apfs` and reads the volume list and the encryption flags from the
+container superblock of every internal APFS partition. Each unencrypted volume
+is probed read-only in turn. Every readable volume is mounted as a subdirectory of the
 single `/media/macOS` directory, named by the role detected from its contents,
 so the whole macOS install is browsed from one place:
 
@@ -288,7 +290,8 @@ so the whole macOS install is browsed from one place:
 
 The probe runs on every boot because the volume order differs between Macs and
 macOS versions. The macOS Data volume is encrypted and stays unmounted, and the
-VM volume is left out.
+VM volume is left out. The mounts carry `x-gvfs-show`, so file managers list
+them as one macOS entry with the volumes as folders.
 
 ## Apple firmware from the installer USB drive
 
