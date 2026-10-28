@@ -1,0 +1,50 @@
+From 0bf78bc04d57dbc19831fb09ccbd64285f3b3b4d Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Wed, 28 Oct 2026 19:33:50 +0100
+Subject: [PATCH] wifi: brcmfmac: leave the AP 4-way handshake to the host on
+ BCM4364
+
+The BCM4364 firmware lists "idauth" in its capabilities, so brcmfmac
+enables BRCMF_FEAT_FWAUTH and advertises
+NL80211_EXT_FEATURE_4WAY_HANDSHAKE_AP_PSK. hostapd and wpa_supplicant
+then pass the PSK to the driver and leave the AP side of the 4-way
+handshake to the firmware. On the BCM4364 that handshake never
+completes. The client associates, no EAPOL-Key frame is sent, and the
+firmware removes the station after about 8 s.
+
+Measured on a MacBookPro15,1 (BCM4364/3, firmware 9.30.514.0.32.5.94,
+FWID 01-47278712) with a WPA2-PSK access point and a Samsung Galaxy
+S22 Ultra as client:
+
+  offload advertised:  NEW_STATION, DEL_STATION 7.8 s later, no EAPOL
+  offload not advertised: 4-way handshake by wpa_supplicant completes,
+                          AP-STA-CONNECTED, DHCP lease, traffic flows
+
+Clear BRCMF_FEAT_FWAUTH on the BCM4364 so the host runs the handshake.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
+index 488364e..255cec3 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
+@@ -318,6 +318,13 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
+ 					BIT(BRCMF_FEAT_WOWL_GTK);
+ 		}
+ 	}
++	/* The BCM4364 firmware lists "idauth", but in AP mode its
++	 * authenticator never completes the 4-way handshake and the station
++	 * is dropped after about 8 s. Leave the handshake to the host.
++	 */
++	if (drvr->bus_if->chip == BRCM_CC_4364_CHIP_ID)
++		ifp->drvr->feat_flags &= ~BIT(BRCMF_FEAT_FWAUTH);
++
+ 	/* MBSS does not work for all chips */
+ 	switch (drvr->bus_if->chip) {
+ 	case BRCM_CC_4330_CHIP_ID:
+-- 
+2.56.0
+
