@@ -270,6 +270,20 @@ items:
       The butterfly keyboard backlight came back on at 0% after resume, and now
       uses the same LED naming as the magic keyboards.
 
+  - id: butterfly-keyboard-debounce
+    title: "Butterfly keyboard debounce"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2hid
+    authors:
+      - deqrocks
+    link: post-install/butterfly-keyboard.md
+    updated: "2026-10-28"
+    notes: >-
+      Optional filter against keystrokes that butterfly keyboards register
+      twice. Enabled with the kernel argument t2hid.debounce_ms=40.
+
   - id: force-click
     title: "Force Click trackpad controls"
     state: available

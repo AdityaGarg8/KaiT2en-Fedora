@@ -44,6 +44,7 @@
 #define APPLE_IS_NON_APPLE	BIT(11)
 #define APPLE_MAGIC_BACKLIGHT	BIT(12)
 #define APPLE_DISABLE_FKEYS	BIT(13)
+#define APPLE_BUTTERFLY		BIT(14)
 
 #define APPLE_FLAG_FKEY		BIT(0)
 #define APPLE_FLAG_TB_FKEY	BIT(1)
@@ -82,6 +83,11 @@ module_param(swap_fn_leftctrl, uint, 0644);
 MODULE_PARM_DESC(swap_fn_leftctrl, "Swap the Fn and left Control keys. "
 		"(For people who want to keep PC keyboard muscle memory. "
 		"[0] = as-is, Mac layout, 1 = swapped, PC layout)");
+
+static unsigned int debounce_ms;
+module_param(debounce_ms, uint, 0644);
+MODULE_PARM_DESC(debounce_ms, "Drop key presses on butterfly keyboards that follow "
+		"the release of the same key within this many ms ([0] = disabled, 40 is a good start)");
 
 struct apple_non_apple_keyboard {
 	char *name;
@@ -123,6 +129,9 @@ struct apple_sc {
 	unsigned int fn_on;
 	unsigned int fn_found;
 	DECLARE_BITMAP(pressed_numlock, KEY_CNT);
+	DECLARE_BITMAP(debounce_down, BTN_MISC);
+	DECLARE_BITMAP(debounce_dropped, BTN_MISC);
+	ktime_t debounce_release[BTN_MISC];
 	struct timer_list battery_timer;
 	struct apple_sc_backlight *backlight;
 };
@@ -599,6 +608,40 @@ static int hidinput_apple_event(struct hid_device *hid, struct input_dev *input,
 	return 0;
 }
 
+/*
+ * Butterfly switches chatter: one physical press arrives as press, release,
+ * press. A press that follows the release of the same key within debounce_ms
+ * is dropped together with its release.
+ */
+static bool apple_debounce(struct apple_sc *asc, u16 code, __s32 value)
+{
+	ktime_t now = ktime_get();
+
+	if (value) {
+		if (test_bit(code, asc->debounce_down) ||
+		    test_bit(code, asc->debounce_dropped))
+			return false;
+
+		if (debounce_ms && ktime_ms_delta(now, asc->debounce_release[code]) < debounce_ms) {
+			set_bit(code, asc->debounce_dropped);
+			hid_dbg(asc->hdev, "debounce: dropped key %u after %lld ms\n",
+				code, ktime_ms_delta(now, asc->debounce_release[code]));
+			return true;
+		}
+
+		set_bit(code, asc->debounce_down);
+		return false;
+	}
+
+	if (test_and_clear_bit(code, asc->debounce_dropped))
+		return true;
+
+	if (test_and_clear_bit(code, asc->debounce_down))
+		asc->debounce_release[code] = now;
+
+	return false;
+}
+
 static int apple_event(struct hid_device *hdev, struct hid_field *field,
 		struct hid_usage *usage, __s32 value)
 {
@@ -614,6 +657,11 @@ static int apple_event(struct hid_device *hdev, struct hid_field *field,
 				usage->code, usage->hid, -value);
 		return 1;
 	}
+
+	if ((asc->quirks & APPLE_BUTTERFLY) && usage->type == EV_KEY &&
+			usage->code < BTN_MISC &&
+			apple_debounce(asc, usage->code, value))
+		return 1;
 
 	if ((asc->quirks & APPLE_HAS_FN) &&
 			hidinput_apple_event(hdev, field->hidinput->input,
@@ -1252,19 +1300,19 @@ static const struct hid_device_id apple_devices[] = {
 		.driver_data = APPLE_HAS_FN | APPLE_RDESC_JIS },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K),
 		.driver_data = APPLE_HAS_FN | APPLE_BACKLIGHT_CTL | APPLE_ISO_TILDE_QUIRK |
-				APPLE_IGNORE_MOUSE },
+			APPLE_BUTTERFLY | APPLE_IGNORE_MOUSE },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132),
 		.driver_data = APPLE_HAS_FN | APPLE_BACKLIGHT_CTL | APPLE_ISO_TILDE_QUIRK |
-			APPLE_DISABLE_FKEYS | APPLE_IGNORE_MOUSE },
+			APPLE_DISABLE_FKEYS | APPLE_BUTTERFLY | APPLE_IGNORE_MOUSE },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680),
 		.driver_data = APPLE_HAS_FN | APPLE_BACKLIGHT_CTL | APPLE_ISO_TILDE_QUIRK |
-			APPLE_DISABLE_FKEYS | APPLE_IGNORE_MOUSE },
+			APPLE_DISABLE_FKEYS | APPLE_BUTTERFLY | APPLE_IGNORE_MOUSE },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680_ALT),
 		.driver_data = APPLE_HAS_FN | APPLE_BACKLIGHT_CTL | APPLE_ISO_TILDE_QUIRK |
-			APPLE_DISABLE_FKEYS | APPLE_IGNORE_MOUSE },
+			APPLE_DISABLE_FKEYS | APPLE_BUTTERFLY | APPLE_IGNORE_MOUSE },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213),
 		.driver_data = APPLE_HAS_FN | APPLE_BACKLIGHT_CTL | APPLE_ISO_TILDE_QUIRK |
-			APPLE_DISABLE_FKEYS | APPLE_IGNORE_MOUSE },
+			APPLE_DISABLE_FKEYS | APPLE_BUTTERFLY | APPLE_IGNORE_MOUSE },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K),
 		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_DISABLE_FKEYS |
 				APPLE_IGNORE_MOUSE },
