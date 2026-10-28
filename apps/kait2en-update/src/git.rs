@@ -8,6 +8,9 @@ use std::{
 
 pub const BRANCH: &str = "main";
 pub const REMOTE_REF: &str = "origin/main";
+/// The only source updates come from. The origin remote of the checkout is
+/// ignored, so a changed remote cannot redirect an update.
+pub const REPOSITORY_URL: &str = "https://github.com/kaiT2en/KaiT2en-Fedora.git";
 
 /// One commit between the installed state and GitHub.
 pub struct Commit {
@@ -50,9 +53,11 @@ impl Repository {
         Err(if message.is_empty() { format!("git {} failed", args.join(" ")) } else { message })
     }
 
-    /// Fetches GitHub as the user, who owns the checkout.
+    /// Fetches GitHub as the user, who owns the checkout, into
+    /// `origin/main` no matter where the origin remote points.
     pub fn fetch(&self) -> Result<(), String> {
-        self.git(&["fetch", "--quiet", "origin", BRANCH]).map(|_| ())
+        let refspec = format!("+refs/heads/{BRANCH}:refs/remotes/{REMOTE_REF}");
+        self.git(&["fetch", "--quiet", REPOSITORY_URL, &refspec]).map(|_| ())
     }
 
     pub fn resolve(&self, rev: &str) -> Result<String, String> {

@@ -4,6 +4,9 @@
 set -Eeuo pipefail
 
 repository=/usr/local/src/KaiT2en-Fedora
+# The only source updates come from. The origin remote of the checkout is
+# ignored, so a changed remote cannot make this root helper install other code.
+repository_url=https://github.com/kaiT2en/KaiT2en-Fedora.git
 branch=main
 
 die() {
@@ -49,7 +52,7 @@ record_current_state() {
 }
 
 refresh_repository() {
-	repo_git fetch origin "$branch"
+	repo_git fetch "$repository_url" "+refs/heads/$branch:refs/remotes/origin/$branch"
 	record_current_state
 	repo_git checkout "$branch"
 	repo_git reset --hard "origin/$branch"
