@@ -16,7 +16,7 @@ use std::{
 use adw::prelude::*;
 use gtk4::{
     glib, Align, Application, ApplicationWindow, Box as GtkBox, Button, DrawingArea, Grid, Label, LinkButton,
-    ListBox, Orientation, PolicyType, ScrolledWindow, SelectionMode, Switch, TextView, WrapMode,
+    ListBox, Orientation, Paned, PolicyType, ScrolledWindow, SelectionMode, Switch, TextView, WrapMode,
 };
 use optional::Part;
 use plan::Plan;
@@ -95,9 +95,9 @@ struct Ui {
     commits: ListBox,
     optional: Vec<OptionalRow>,
     syncing: Cell<bool>,
-    log_card: GtkBox,
     log: TextView,
     result: Label,
+    restart: Button,
     selected: RefCell<Vec<Selected>>,
     busy: Cell<bool>,
 }
@@ -164,7 +164,7 @@ fn build_ui(app: &Application) {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("KaiT2en Update")
-        .default_width(720)
+        .default_width(1240)
         .default_height(780)
         .build();
 
@@ -252,18 +252,33 @@ fn build_ui(app: &Application) {
         .build();
     let log_scroll = ScrolledWindow::builder()
         .child(&log)
-        .min_content_height(260)
+        .vexpand(true)
         .hscrollbar_policy(PolicyType::Never)
         .build();
+    // Beside the content like in Kernel Builder, so the output is in view
+    // without scrolling.
     let log_card = style::card(&log_scroll);
     log_card.add_css_class("kait2en-log");
-    log_card.set_visible(false);
-    root.append(&log_card);
+    log_card.set_size_request(280, -1);
+    log_card.set_margin_top(style::TOP_MARGIN);
+    log_card.set_margin_bottom(style::BOTTOM_MARGIN);
+    log_card.set_margin_end(style::SIDE_MARGIN);
 
     let scroll = ScrolledWindow::builder()
         .child(&root)
-        .vexpand(true)
         .hscrollbar_policy(PolicyType::Never)
+        .build();
+    scroll.set_size_request(360, -1);
+
+    let workspace = Paned::builder()
+        .orientation(Orientation::Horizontal)
+        .vexpand(true)
+        .wide_handle(true)
+        .position(640)
+        .start_child(&scroll)
+        .end_child(&log_card)
+        .shrink_start_child(false)
+        .shrink_end_child(false)
         .build();
 
     let result = text_label("", &[]);
@@ -272,6 +287,9 @@ fn build_ui(app: &Application) {
     let update = Button::with_label("Update");
     update.add_css_class("suggested-action");
     update.set_sensitive(false);
+    let restart = Button::with_label("Restart");
+    restart.add_css_class("suggested-action");
+    restart.set_visible(false);
     let donate = LinkButton::builder()
         .uri("https://donate.stripe.com/eVq14n8a7agh2lQdqq14400")
         .label("Fund our bugs")
@@ -284,10 +302,11 @@ fn build_ui(app: &Application) {
     footer.append(&donate);
     footer.append(&result);
     footer.append(&version);
+    footer.append(&restart);
     footer.append(&update);
 
     let content = GtkBox::new(Orientation::Vertical, 0);
-    content.append(&scroll);
+    content.append(&workspace);
     content.append(&footer);
     window.set_child(Some(&content));
 
@@ -310,9 +329,9 @@ fn build_ui(app: &Application) {
         commits,
         optional: optional_rows,
         syncing: Cell::new(false),
-        log_card,
         log,
         result,
+        restart,
         selected: RefCell::new(Vec::new()),
         busy: Cell::new(false),
     });
@@ -328,6 +347,10 @@ fn build_ui(app: &Application) {
         let selection = selected_items(&ui);
         start_apply(&ui, selection);
     }));
+    ui.restart.connect_clicked(glib::clone!(
+        #[strong]
+        ui,
+        move |_| reboot(&ui)));
     ui.install_all.connect_clicked(glib::clone!(
         #[strong]
         ui,
@@ -564,9 +587,30 @@ fn start_apply(ui: &Rc<Ui>, selection: Selection) {
     ui.result.set_label("");
     ui.result.remove_css_class("success");
     ui.result.remove_css_class("error");
+    ui.restart.set_visible(false);
     ui.log.buffer().set_text("");
-    ui.log_card.set_visible(true);
     run_next(ui.clone(), queue, reboot, only_removals);
+}
+
+fn reboot(ui: &Rc<Ui>) {
+    ui.restart.set_sensitive(false);
+    runner::background(
+        || std::process::Command::new("systemctl").arg("reboot").output(),
+        glib::clone!(
+        #[strong]
+        ui,
+        move |output: std::io::Result<std::process::Output>| {
+            let error = match output {
+                Ok(output) if output.status.success() => return,
+                Ok(output) => String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+                Err(error) => error.to_string(),
+            };
+            ui.restart.set_sensitive(true);
+            ui.result.set_label(&format!("Could not restart: {error}"));
+            ui.result.remove_css_class("success");
+            ui.result.add_css_class("error");
+        }),
+    );
 }
 
 fn run_next(ui: Rc<Ui>, mut queue: VecDeque<Selection>, reboot: bool, only_removals: bool) {
@@ -578,6 +622,7 @@ fn run_next(ui: Rc<Ui>, mut queue: VecDeque<Selection>, reboot: bool, only_remov
             (false, false) => "Installed.",
         });
         ui.result.add_css_class("success");
+        ui.restart.set_visible(reboot);
         start_check(&ui);
         return;
     };
