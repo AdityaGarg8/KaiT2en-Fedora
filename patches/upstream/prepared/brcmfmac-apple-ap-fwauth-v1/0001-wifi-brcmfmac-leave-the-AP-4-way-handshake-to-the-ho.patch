@@ -1,0 +1,58 @@
+From ddd55bac804ef6dda2541faeabcbe9d965809517 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Wed, 28 Oct 2026 20:54:29 +0100
+Subject: [PATCH] wifi: brcmfmac: leave the AP 4-way handshake to the host on
+ Apple chips
+
+The Apple firmware for the BCM4364 and BCM4377 lists "idauth" in its
+capabilities, so brcmfmac enables BRCMF_FEAT_FWAUTH and advertises
+NL80211_EXT_FEATURE_4WAY_HANDSHAKE_AP_PSK. hostapd and wpa_supplicant
+then pass the PSK to the driver and leave the AP side of the 4-way
+handshake to the firmware. On the BCM4364 that handshake never
+completes. The client associates, no EAPOL-Key frame is sent, and the
+firmware removes the station after about 8 s.
+
+Measured on a MacBookPro15,1 (BCM4364/3, firmware 9.30.514.0.32.5.94,
+FWID 01-47278712) with a WPA2-PSK access point and a Samsung Galaxy
+S22 Ultra as client:
+
+  offload advertised:  NEW_STATION, DEL_STATION 7.8 s later, no EAPOL
+  offload not advertised: 4-way handshake by wpa_supplicant completes,
+                          AP-STA-CONNECTED, DHCP lease, traffic flows
+
+Clear BRCMF_FEAT_FWAUTH on the BCM4355, BCM4364 and BCM4377, the chips
+in Apple's T2 Macs, so the host runs the handshake.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ .../wireless/broadcom/brcm80211/brcmfmac/feature.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
+index 488364e..05e9750 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
+@@ -318,6 +318,20 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
+ 					BIT(BRCMF_FEAT_WOWL_GTK);
+ 		}
+ 	}
++	/* The Apple firmware for these chips lists "idauth", but in AP mode
++	 * its authenticator never completes the 4-way handshake and the
++	 * station is dropped after about 8 s. Leave the handshake to the host.
++	 */
++	switch (drvr->bus_if->chip) {
++	case BRCM_CC_4355_CHIP_ID:
++	case BRCM_CC_4364_CHIP_ID:
++	case BRCM_CC_4377_CHIP_ID:
++		ifp->drvr->feat_flags &= ~BIT(BRCMF_FEAT_FWAUTH);
++		break;
++	default:
++		break;
++	}
++
+ 	/* MBSS does not work for all chips */
+ 	switch (drvr->bus_if->chip) {
+ 	case BRCM_CC_4330_CHIP_ID:
+-- 
+2.56.0
+
