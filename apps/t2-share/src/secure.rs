@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! UKEY2 server handshake and the D2D secure channel on top of it.
+//! UKEY2 handshake for both roles and the D2D secure channel on top of it.
 //!
 //! Key derivation and message layout follow NearDrop PROTOCOL.md and are
 //! adapted from rquickshare `core_lib/src/hdl/inbound.rs` and
@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256, Sha512};
 use crate::proto::location::nearby::connections::OfflineFrame;
 use crate::proto::securegcm::{
     DeviceToDeviceMessage, GcmMetadata, Type as GcmType, Ukey2ClientFinished, Ukey2ClientInit,
-    Ukey2HandshakeCipher, Ukey2Message, Ukey2ServerInit, ukey2_message,
+    Ukey2HandshakeCipher, Ukey2Message, Ukey2ServerInit, ukey2_client_init, ukey2_message,
 };
 use crate::proto::securemessage::{
     EcP256PublicKey, EncScheme, GenericPublicKey, Header, HeaderAndBody, PublicKeyType,
@@ -71,21 +71,10 @@ impl ServerHandshake {
             .map(|c| c.commitment().to_vec())
             .ok_or_else(|| anyhow!("UKEY2: no P256_SHA512 commitment"))?;
 
-        let secret = SecretKey::random(&mut OsRng);
-        let point = secret.public_key().to_encoded_point(false);
-        let public_key = GenericPublicKey {
-            r#type: PublicKeyType::EcP256.into(),
-            ec_p256_public_key: Some(EcP256PublicKey {
-                x: signed_be(point.x().ok_or_else(|| anyhow!("no x"))?),
-                y: signed_be(point.y().ok_or_else(|| anyhow!("no y"))?),
-            }),
-            ..Default::default()
-        };
-        let mut random = [0u8; 32];
-        OsRng.fill_bytes(&mut random);
+        let (secret, public_key) = new_key()?;
         let server_init = Ukey2ServerInit {
             version: Some(1),
-            random: Some(random.to_vec()),
+            random: Some(random32()),
             handshake_cipher: Some(Ukey2HandshakeCipher::P256Sha512.into()),
             public_key: Some(public_key.encode_to_vec()),
         };
@@ -117,41 +106,149 @@ impl ServerHandshake {
         }
         let finish =
             Ukey2ClientFinished::decode(msg.message_data()).context("UKEY2 ClientFinished")?;
-        let key = GenericPublicKey::decode(finish.public_key()).context("client public key")?;
-        let key = key
-            .ec_p256_public_key
-            .ok_or_else(|| anyhow!("client key is not P-256"))?;
-
-        let mut sec1 = vec![0x04];
-        sec1.extend_from_slice(&unsigned_32(&key.x)?);
-        sec1.extend_from_slice(&unsigned_32(&key.y)?);
-        let point = EncodedPoint::from_bytes(&sec1).context("client key point")?;
-        let peer = Option::<PublicKey>::from(PublicKey::from_encoded_point(&point))
-            .ok_or_else(|| anyhow!("client key is not on the curve"))?;
-
-        let shared = p256::ecdh::diffie_hellman(self.secret.to_nonzero_scalar(), peer.as_affine());
-        let derived = Sha256::digest(shared.raw_secret_bytes());
-        let mut info = self.client_init;
-        info.extend_from_slice(&self.server_init);
-
-        let auth = hkdf(b"UKEY2 v1 auth", &derived, &info);
-        let next = hkdf(b"UKEY2 v1 next", &derived, &info);
-        let d2d_client = hkdf(&D2D_SALT, &next, b"client");
-        let d2d_server = hkdf(&D2D_SALT, &next, b"server");
-
-        let channel = SecureChannel {
-            decrypt_key: hkdf(&SECUREMESSAGE_SALT, &d2d_client, b"ENC:2"),
-            recv_hmac_key: hkdf(&SECUREMESSAGE_SALT, &d2d_client, b"SIG:1"),
-            encrypt_key: hkdf(&SECUREMESSAGE_SALT, &d2d_server, b"ENC:2"),
-            send_hmac_key: hkdf(&SECUREMESSAGE_SALT, &d2d_server, b"SIG:1"),
-            send_seq: 0,
-            recv_seq: 0,
-        };
-        Ok((channel, pin_code(&auth)))
+        let peer = peer_key(finish.public_key())?;
+        derive(Role::Server, &self.secret, &peer, &self.client_init, &self.server_init)
     }
 }
 
-/// Encrypted and signed transport for offline frames, server keys.
+/// Client side of the UKEY2 handshake after ClientInit has been sent.
+pub struct ClientHandshake {
+    secret: SecretKey,
+    client_init: Vec<u8>,
+    client_finish: Vec<u8>,
+}
+
+impl ClientHandshake {
+    /// Returns the handshake state and the raw ClientInit message to send.
+    /// ClientFinished is built up front because ClientInit commits to its
+    /// hash.
+    pub fn start() -> Result<(Self, Vec<u8>)> {
+        let (secret, public_key) = new_key()?;
+        let client_finish = Ukey2Message {
+            message_type: Some(ukey2_message::Type::ClientFinish.into()),
+            message_data: Some(
+                Ukey2ClientFinished { public_key: Some(public_key.encode_to_vec()) }
+                    .encode_to_vec(),
+            ),
+        }
+        .encode_to_vec();
+        let client_init = Ukey2Message {
+            message_type: Some(ukey2_message::Type::ClientInit.into()),
+            message_data: Some(
+                Ukey2ClientInit {
+                    version: Some(1),
+                    random: Some(random32()),
+                    cipher_commitments: vec![ukey2_client_init::CipherCommitment {
+                        handshake_cipher: Some(Ukey2HandshakeCipher::P256Sha512.into()),
+                        commitment: Some(Sha512::digest(&client_finish).to_vec()),
+                    }],
+                    next_protocol: Some(NEXT_PROTOCOL.to_string()),
+                }
+                .encode_to_vec(),
+            ),
+        }
+        .encode_to_vec();
+        let state = Self { secret, client_init: client_init.clone(), client_finish };
+        Ok((state, client_init))
+    }
+
+    /// Checks the raw ServerInit message and derives the channel keys.
+    /// Returns the channel, the PIN and the raw ClientFinished to send.
+    pub fn finish(self, server_init_raw: &[u8]) -> Result<(SecureChannel, String, Vec<u8>)> {
+        let msg = Ukey2Message::decode(server_init_raw).context("UKEY2 message")?;
+        if msg.message_type() != ukey2_message::Type::ServerInit {
+            bail!("UKEY2: expected ServerInit, got {:?}", msg.message_type());
+        }
+        let init = Ukey2ServerInit::decode(msg.message_data()).context("UKEY2 ServerInit")?;
+        if init.version() != 1 {
+            bail!("UKEY2: ServerInit version {}", init.version());
+        }
+        if init.random().len() != 32 {
+            bail!("UKEY2: ServerInit random has {} bytes", init.random().len());
+        }
+        if init.handshake_cipher() != Ukey2HandshakeCipher::P256Sha512 {
+            bail!("UKEY2: handshake cipher {:?}", init.handshake_cipher());
+        }
+        let peer = peer_key(init.public_key())?;
+        let (channel, pin) =
+            derive(Role::Client, &self.secret, &peer, &self.client_init, server_init_raw)?;
+        Ok((channel, pin, self.client_finish))
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Role {
+    Client,
+    Server,
+}
+
+fn new_key() -> Result<(SecretKey, GenericPublicKey)> {
+    let secret = SecretKey::random(&mut OsRng);
+    let point = secret.public_key().to_encoded_point(false);
+    let public_key = GenericPublicKey {
+        r#type: PublicKeyType::EcP256.into(),
+        ec_p256_public_key: Some(EcP256PublicKey {
+            x: signed_be(point.x().ok_or_else(|| anyhow!("no x"))?),
+            y: signed_be(point.y().ok_or_else(|| anyhow!("no y"))?),
+        }),
+        ..Default::default()
+    };
+    Ok((secret, public_key))
+}
+
+fn random32() -> Vec<u8> {
+    let mut random = [0u8; 32];
+    OsRng.fill_bytes(&mut random);
+    random.to_vec()
+}
+
+/// The peer's P-256 key from a serialized GenericPublicKey.
+fn peer_key(raw: &[u8]) -> Result<PublicKey> {
+    let key = GenericPublicKey::decode(raw).context("peer public key")?;
+    let key = key.ec_p256_public_key.ok_or_else(|| anyhow!("peer key is not P-256"))?;
+    let mut sec1 = vec![0x04];
+    sec1.extend_from_slice(&unsigned_32(&key.x)?);
+    sec1.extend_from_slice(&unsigned_32(&key.y)?);
+    let point = EncodedPoint::from_bytes(&sec1).context("peer key point")?;
+    Option::<PublicKey>::from(PublicKey::from_encoded_point(&point))
+        .ok_or_else(|| anyhow!("peer key is not on the curve"))
+}
+
+/// Channel keys and PIN from the ECDH secret and both raw init messages.
+/// The client uses the server's keys for receiving and its own for
+/// sending, the server the other way round.
+fn derive(
+    role: Role,
+    secret: &SecretKey,
+    peer: &PublicKey,
+    client_init: &[u8],
+    server_init: &[u8],
+) -> Result<(SecureChannel, String)> {
+    let shared = p256::ecdh::diffie_hellman(secret.to_nonzero_scalar(), peer.as_affine());
+    let derived = Sha256::digest(shared.raw_secret_bytes());
+    let mut info = client_init.to_vec();
+    info.extend_from_slice(server_init);
+
+    let auth = hkdf(b"UKEY2 v1 auth", &derived, &info);
+    let next = hkdf(b"UKEY2 v1 next", &derived, &info);
+    let d2d_client = hkdf(&D2D_SALT, &next, b"client");
+    let d2d_server = hkdf(&D2D_SALT, &next, b"server");
+    let (receive_from, send_with) = match role {
+        Role::Server => (d2d_client, d2d_server),
+        Role::Client => (d2d_server, d2d_client),
+    };
+    let channel = SecureChannel {
+        decrypt_key: hkdf(&SECUREMESSAGE_SALT, &receive_from, b"ENC:2"),
+        recv_hmac_key: hkdf(&SECUREMESSAGE_SALT, &receive_from, b"SIG:1"),
+        encrypt_key: hkdf(&SECUREMESSAGE_SALT, &send_with, b"ENC:2"),
+        send_hmac_key: hkdf(&SECUREMESSAGE_SALT, &send_with, b"SIG:1"),
+        send_seq: 0,
+        recv_seq: 0,
+    };
+    Ok((channel, pin_code(&auth)))
+}
+
+/// Encrypted and signed transport for offline frames.
 pub struct SecureChannel {
     decrypt_key: [u8; 32],
     recv_hmac_key: [u8; 32],
@@ -302,6 +399,21 @@ mod tests {
     fn salts_are_the_documented_hashes() {
         assert_eq!(D2D_SALT.as_slice(), Sha256::digest(b"D2D").as_slice());
         assert_eq!(SECUREMESSAGE_SALT.as_slice(), Sha256::digest(b"SecureMessage").as_slice());
+    }
+
+    #[test]
+    fn client_and_server_agree() {
+        let (client, client_init) = ClientHandshake::start().unwrap();
+        let (server, server_init) = ServerHandshake::accept(&client_init).unwrap();
+        let (mut client_channel, client_pin, client_finish) = client.finish(&server_init).unwrap();
+        let (mut server_channel, server_pin) = server.finish(&client_finish).unwrap();
+        assert_eq!(client_pin, server_pin);
+
+        let frame = OfflineFrame { version: Some(1), ..Default::default() };
+        let sealed = client_channel.seal(&frame);
+        assert_eq!(server_channel.open(&sealed).unwrap().version, Some(1));
+        let sealed = server_channel.seal(&frame);
+        assert_eq!(client_channel.open(&sealed).unwrap().version, Some(1));
     }
 
     #[test]

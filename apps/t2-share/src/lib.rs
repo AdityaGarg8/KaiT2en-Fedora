@@ -6,10 +6,13 @@
 //! adapted from rquickshare, see THIRD-PARTY-NOTICES.md.
 
 pub mod config;
+pub mod discover;
 pub mod endpoint;
+pub mod link;
 pub mod mdns;
 pub mod notify;
 pub mod proto;
 pub mod receive;
 pub mod secure;
+pub mod send;
 pub mod service;

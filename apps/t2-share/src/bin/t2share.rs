@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Command line front end: receive Quick Share transfers in the shared WLAN.
+//! Command line front end: receive and send Quick Share transfers in the
+//! shared WLAN.
 
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -11,9 +12,11 @@ use clap::{Parser, Subcommand};
 use log::{info, warn};
 use tokio::net::TcpListener;
 
+use t2_share::discover::{Discovery, Peer};
 use t2_share::endpoint::random_endpoint_id;
 use t2_share::mdns::Advertisement;
 use t2_share::receive::{self, Incoming, Outcome};
+use t2_share::send::{self, Progress, SendOutcome};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -46,6 +49,22 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
+    /// Send files to a phone in the shared WLAN. The phone has to be visible
+    /// to everyone in its Quick Share settings.
+    Send {
+        /// Files to send
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Send to the first phone whose name contains this text, without asking
+        #[arg(long)]
+        to: Option<String>,
+        /// Seconds to look for phones
+        #[arg(long, default_value_t = 10)]
+        wait: u64,
+        /// Name shown on the phone, the hostname by default
+        #[arg(long)]
+        name: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -54,6 +73,79 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Receive { name, dir, yes, port } => receive_loop(name, dir, yes, port).await,
         Command::Daemon { name } => t2_share::service::run(&name.unwrap_or_else(default_name)).await,
+        Command::Send { files, to, wait, name } => {
+            send_files(files, to, wait, name.unwrap_or_else(default_name)).await
+        }
+    }
+}
+
+async fn send_files(files: Vec<PathBuf>, to: Option<String>, wait: u64, name: String) -> Result<()> {
+    let mut discovery = Discovery::start().await?;
+    let mut peers: Vec<Peer> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(wait);
+    println!("looking for phones for {wait} s");
+    let target = loop {
+        tokio::select! {
+            peer = discovery.next() => {
+                let peer = peer?;
+                println!("  {}: {} ({:?})", peers.len() + 1, peer.label(), peer.device_type);
+                if let Some(to) = &to {
+                    if peer.label().to_lowercase().contains(&to.to_lowercase()) {
+                        break peer;
+                    }
+                }
+                peers.push(peer);
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                if to.is_some() || peers.is_empty() {
+                    anyhow::bail!(
+                        "no matching phone found. The phone has to be in the same Wi-Fi, with \
+                         Bluetooth on and Quick Share visible to everyone"
+                    );
+                }
+                break pick(peers)?;
+            }
+        }
+    };
+    drop(discovery);
+
+    println!("sending to {} at {}", target.label(), target.addr);
+    let mut progress = CliProgress { last: 0 };
+    match send::send(target.addr, &name, &files, &mut progress).await? {
+        SendOutcome::Sent => println!("\rsent {} file(s)          ", files.len()),
+        SendOutcome::Declined(status) => println!("\rdeclined by the phone ({status})"),
+    }
+    Ok(())
+}
+
+fn pick(peers: Vec<Peer>) -> Result<Peer> {
+    if peers.len() == 1 {
+        return Ok(peers.into_iter().next().expect("one peer"));
+    }
+    print!("send to [1-{}]: ", peers.len());
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line)?;
+    let index: usize = line.trim().parse().context("not a number")?;
+    peers.into_iter().nth(index.wrapping_sub(1)).context("no such phone")
+}
+
+struct CliProgress {
+    last: u64,
+}
+
+impl Progress for CliProgress {
+    fn waiting(&mut self, pin: &str) {
+        println!("waiting for the phone to accept, PIN {pin}");
+    }
+
+    fn sent(&mut self, sent: u64, total: u64) {
+        let percent = sent * 100 / total.max(1);
+        if percent != self.last {
+            self.last = percent;
+            print!("\r{percent} %");
+            let _ = std::io::stdout().flush();
+        }
     }
 }
 

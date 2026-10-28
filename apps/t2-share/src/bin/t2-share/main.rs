@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Settings window: receiving on or off, the download folder and the
-//! trusted devices. Transfers themselves are handled by the `t2share
-//! daemon` user service and its notifications.
+//! Settings window: receiving on or off, the download folder, the trusted
+//! devices and sending files. Received transfers are handled by the
+//! `t2share daemon` user service and its notifications. Started with files,
+//! for example from a file manager, it opens the send window for them.
+
+mod send_window;
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::process::Command;
 use std::rc::Rc;
 
 use adw::prelude::*;
+use gtk::gdk;
 use gtk4 as gtk;
 
 use t2_share::config::Config;
@@ -16,8 +21,15 @@ const APP_ID: &str = "org.t2share.gtk";
 const SERVICE: &str = "t2-share.service";
 
 fn main() -> glib::ExitCode {
-    let app = adw::Application::builder().application_id(APP_ID).build();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let app = adw::Application::builder()
+        .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::HANDLES_OPEN)
+        .build();
     app.connect_activate(build_ui);
+    app.connect_open(|app, files, _| {
+        send_window::open(app, files.iter().filter_map(|f| f.path()).collect());
+    });
     app.run()
 }
 
@@ -73,6 +85,39 @@ fn build_ui(app: &adw::Application) {
     }
     page.add(&receiving);
 
+    let sending = adw::PreferencesGroup::builder()
+        .title("Sending")
+        .description("You can also drop files on this window.")
+        .build();
+    let send_row = adw::ActionRow::builder()
+        .title("Send files to a phone")
+        .subtitle("The phone needs Quick Share visible to everyone")
+        .build();
+    let pick = gtk::Button::builder()
+        .label("Choose files…")
+        .valign(gtk::Align::Center)
+        .build();
+    send_row.add_suffix(&pick);
+    send_row.set_activatable_widget(Some(&pick));
+    sending.add(&send_row);
+    {
+        let app = app.clone();
+        pick.connect_clicked(move |button| {
+            let dialog = gtk::FileDialog::builder().title("Send files").modal(true).build();
+            let window = button.root().and_downcast::<gtk::Window>();
+            let app = app.clone();
+            dialog.open_multiple(window.as_ref(), gio::Cancellable::NONE, move |result| {
+                let Ok(files) = result else { return };
+                let paths: Vec<PathBuf> = (0..files.n_items())
+                    .filter_map(|i| files.item(i).and_downcast::<gio::File>())
+                    .filter_map(|f| f.path())
+                    .collect();
+                send_window::open(&app, paths);
+            });
+        });
+    }
+    page.add(&sending);
+
     let trusted = adw::PreferencesGroup::builder()
         .title("Trusted devices")
         .description(
@@ -124,6 +169,17 @@ fn build_ui(app: &adw::Application) {
     view.add_top_bar(&header);
     view.set_content(Some(&page));
     window.set_content(Some(&view));
+
+    let drop = gtk::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
+    {
+        let app = app.clone();
+        drop.connect_drop(move |_, value, _, _| {
+            let Ok(files) = value.get::<gdk::FileList>() else { return false };
+            send_window::open(&app, files.files().iter().filter_map(|f| f.path()).collect());
+            true
+        });
+    }
+    view.add_controller(drop);
     window.present();
 }
 

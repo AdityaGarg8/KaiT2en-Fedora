@@ -16,15 +16,22 @@ The license headers in the files are kept unchanged.
 
 ## rquickshare
 
-Parts of `src/secure.rs` and `src/receive.rs` (UKEY2 key derivation, the
-secure message layout, the PIN algorithm and the receiving frame sequence)
-are adapted from rquickshare by martichou
-(https://github.com/Martichou/rquickshare, `core_lib/src/hdl/inbound.rs`
-and `core_lib/src/utils.rs`, commit 378d8ae), licensed under the GNU
-General Public License version 3. The combined program is distributed under
+Parts of `src/secure.rs`, `src/link.rs`, `src/receive.rs`, `src/send.rs`
+and `src/discover.rs` (UKEY2 key derivation, the secure message layout, the
+PIN algorithm, the payload framing, the receiving and sending frame
+sequences and the BLE advertisement) are adapted from rquickshare by
+martichou (https://github.com/Martichou/rquickshare,
+`core_lib/src/hdl/inbound.rs`, `core_lib/src/hdl/outbound.rs`,
+`core_lib/src/hdl/blea.rs` and `core_lib/src/utils.rs`, commit 378d8ae),
+licensed under the GNU General Public License version 3. The combined program is distributed under
 GPL-3.0-or-later, see `LICENSE`.
 
 ## Protocol documentation
+
+The layout of the BLE Fast Initiation advertisement follows
+`sharing/internal/api/fast_init_ble_beacon.h` in google/nearby
+(https://github.com/google/nearby, Apache License 2.0). No code is copied
+from it.
 
 The protocol description follows NearDrop's `PROTOCOL.md` by grishka
 (https://github.com/grishka/NearDrop), released into the public domain

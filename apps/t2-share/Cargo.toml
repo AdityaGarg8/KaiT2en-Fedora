@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "t2-share"
-path = "src/bin/t2-share.rs"
+path = "src/bin/t2-share/main.rs"
 required-features = ["gui"]
 
 [[bin]]
@@ -20,11 +20,12 @@ path = "src/bin/t2share.rs"
 
 [features]
 default = ["gui"]
-gui = ["dep:gtk4", "dep:adw", "dep:glib", "dep:gio"]
+gui = ["dep:gtk4", "dep:adw", "dep:glib", "dep:gio", "dep:async-channel"]
 
 [dependencies]
 aes = "0.8"
 anyhow = "1.0"
+async-channel = { version = "2.5", optional = true }
 base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
 clap = { version = "4.5", features = ["derive"] }
@@ -37,6 +38,7 @@ env_logger = "0.11"
 futures-util = { version = "0.3", default-features = false }
 hkdf = "0.12"
 hmac = "0.12"
+if-addrs = "0.15"
 log = "0.4"
 mdns-sd = "0.21"
 p256 = { version = "0.13", features = ["ecdh"] }

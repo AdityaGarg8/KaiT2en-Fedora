@@ -8,37 +8,26 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::os::unix::fs::FileExt;
 use std::future::Future;
+use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use log::{debug, info, warn};
 use prost::Message;
-use rand::Rng;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::endpoint::{DeviceType, parse_endpoint_info};
+use crate::link::{
+    BytesPayloads, Frames, KEEPALIVE, Link, connection_accept, paired_key_encryption,
+    paired_key_result, write_frame,
+};
 use crate::proto::location::nearby::connections as nc;
 use crate::proto::sharing::nearby as sn;
-use crate::secure::{SecureChannel, ServerHandshake};
-
-/// Largest frame accepted from the wire, Android sends file chunks well
-/// below this.
-const MAX_FRAME: usize = 5 * 1024 * 1024;
-/// Largest bytes payload, these carry protobuf frames and short texts.
-const MAX_BYTES_PAYLOAD: i64 = 5 * 1024 * 1024;
-/// Android expects a keep-alive at least every 10 s.
-const KEEPALIVE: Duration = Duration::from_secs(5);
-/// Silence after which the peer is considered gone.
-const READ_TIMEOUT: Duration = Duration::from_secs(60);
+use crate::secure::ServerHandshake;
 
 /// What the sender offers, shown to the user before accepting.
 #[derive(Clone, Debug)]
@@ -76,9 +65,8 @@ struct PendingFile {
 }
 
 struct Session {
-    channel: SecureChannel,
-    writer: OwnedWriteHalf,
-    bytes: HashMap<i64, Vec<u8>>,
+    link: Link,
+    bytes: BytesPayloads,
     files: HashMap<i64, PendingFile>,
     text_ids: HashMap<i64, String>,
     done_files: Vec<PathBuf>,
@@ -88,89 +76,48 @@ struct Session {
 /// Runs one incoming connection to its end.
 pub async fn handle(stream: TcpStream, dir: PathBuf, consent: Consent) -> Result<Outcome> {
     let peer = stream.peer_addr().ok();
-    let (reader, writer) = stream.into_split();
-    let (tx, mut rx) = mpsc::channel(16);
-    let reader_task = tokio::spawn(read_frames(reader, tx));
-    let result = run(&mut rx, writer, dir, consent, peer.map(|p| p.ip())).await;
-    reader_task.abort();
+    let result = run(stream, dir, consent).await;
     if let Err(err) = &result {
         warn!("connection from {peer:?}: {err:#}");
     }
     result
 }
 
-async fn run(
-    rx: &mut mpsc::Receiver<Vec<u8>>,
-    mut writer: OwnedWriteHalf,
-    dir: PathBuf,
-    consent: Consent,
-    peer_ip: Option<std::net::IpAddr>,
-) -> Result<Outcome> {
-    let request = nc::OfflineFrame::decode(next(rx).await?.as_slice())?;
-    let request = v1(&request, nc::v1_frame::FrameType::ConnectionRequest)?
+async fn run(stream: TcpStream, dir: PathBuf, consent: Consent) -> Result<Outcome> {
+    let (mut frames, mut writer) = Frames::split(stream);
+    let request = frames.expect(nc::v1_frame::FrameType::ConnectionRequest).await?;
+    let request = request
         .connection_request
-        .as_ref()
         .ok_or_else(|| anyhow!("connection request without body"))?;
     let (device_type, sender) = parse_endpoint_info(request.endpoint_info())
         .ok_or_else(|| anyhow!("connection request without endpoint info"))?;
     info!("connection request from {sender:?} ({device_type:?})");
-    // Identity candidates for trusted devices, logged until it is clear
-    // which of them stay the same between transfers.
-    info!(
-        "identity: endpoint_id {:?} endpoint_info {} peer MAC {:?}",
-        request.endpoint_id(),
-        hex(request.endpoint_info()),
-        peer_mac(peer_ip),
-    );
 
-    let (handshake, server_init) = ServerHandshake::accept(&next(rx).await?)?;
+    let (handshake, server_init) = ServerHandshake::accept(&frames.next().await?)?;
     write_frame(&mut writer, &server_init).await?;
-    let (channel, pin) = handshake.finish(&next(rx).await?)?;
+    let (channel, pin) = handshake.finish(&frames.next().await?)?;
     info!("UKEY2 done, PIN {pin}");
 
-    let response = nc::OfflineFrame::decode(next(rx).await?.as_slice())?;
-    v1(&response, nc::v1_frame::FrameType::ConnectionResponse)?;
-    let accept = offline_frame(nc::V1Frame {
-        r#type: Some(nc::v1_frame::FrameType::ConnectionResponse.into()),
-        connection_response: Some(nc::ConnectionResponseFrame {
-            response: Some(nc::connection_response_frame::ResponseStatus::Accept.into()),
-            os_info: Some(nc::OsInfo {
-                r#type: Some(nc::os_info::OsType::Linux.into()),
-            }),
-            ..Default::default()
-        }),
-        ..Default::default()
-    });
-    write_frame(&mut writer, &accept.encode_to_vec()).await?;
+    frames.expect(nc::v1_frame::FrameType::ConnectionResponse).await?;
+    write_frame(&mut writer, &connection_accept().encode_to_vec()).await?;
 
     let mut session = Session {
-        channel,
-        writer,
-        bytes: HashMap::new(),
+        link: Link::new(channel, writer),
+        bytes: BytesPayloads::default(),
         files: HashMap::new(),
         text_ids: HashMap::new(),
         done_files: Vec::new(),
         done_texts: Vec::new(),
     };
-    session
-        .send_sharing(sn::V1Frame {
-            r#type: Some(sn::v1_frame::FrameType::PairedKeyEncryption.into()),
-            paired_key_encryption: Some(sn::PairedKeyEncryptionFrame {
-                secret_id_hash: Some(random_bytes(6)),
-                signed_data: Some(random_bytes(72)),
-                ..Default::default()
-            }),
-            ..Default::default()
-        })
-        .await?;
+    session.link.send_sharing(paired_key_encryption()).await?;
 
     let mut keepalive = tokio::time::interval(KEEPALIVE);
     let mut pending_consent: Option<JoinHandle<bool>> = None;
     let mut accepted = false;
     loop {
         tokio::select! {
-            raw = next(rx) => {
-                let frame = session.channel.open(&raw?)?;
+            raw = frames.next() => {
+                let frame = session.link.open(&raw?)?;
                 let Some(v1) = frame.v1 else { continue };
                 match v1.r#type() {
                     nc::v1_frame::FrameType::KeepAlive => {}
@@ -181,23 +128,8 @@ async fn run(
                         let transfer = v1.payload_transfer.unwrap_or_default();
                         if let Some(setup) = session.on_payload(transfer)? {
                             match setup.v1.map(|v| (v.r#type(), v)) {
-                                Some((sn::v1_frame::FrameType::PairedKeyEncryption, v)) => {
-                                    if let Some(pke) = &v.paired_key_encryption {
-                                        info!(
-                                            "identity: secret_id_hash {} signed_data {} optional_signed_data {}",
-                                            hex(pke.secret_id_hash()),
-                                            hex(pke.signed_data()),
-                                            hex(pke.optional_signed_data()),
-                                        );
-                                    }
-                                    session.send_sharing(sn::V1Frame {
-                                        r#type: Some(sn::v1_frame::FrameType::PairedKeyResult.into()),
-                                        paired_key_result: Some(sn::PairedKeyResultFrame {
-                                            status: Some(sn::paired_key_result_frame::Status::Unable.into()),
-                                            ..Default::default()
-                                        }),
-                                        ..Default::default()
-                                    }).await?;
+                                Some((sn::v1_frame::FrameType::PairedKeyEncryption, _)) => {
+                                    session.link.send_sharing(paired_key_result()).await?;
                                 }
                                 Some((sn::v1_frame::FrameType::PairedKeyResult, _)) => {}
                                 Some((sn::v1_frame::FrameType::Introduction, v)) => {
@@ -216,11 +148,7 @@ async fn run(
                             }
                         }
                         if accepted && session.complete() {
-                            session.send_offline(nc::V1Frame {
-                                r#type: Some(nc::v1_frame::FrameType::Disconnection.into()),
-                                disconnection: Some(nc::DisconnectionFrame::default()),
-                                ..Default::default()
-                            }).await?;
+                            session.link.send_disconnection().await?;
                             return Ok(session.outcome());
                         }
                     }
@@ -235,7 +163,7 @@ async fn run(
                 } else {
                     sn::connection_response_frame::Status::Reject
                 };
-                session.send_sharing(sn::V1Frame {
+                session.link.send_sharing(sn::V1Frame {
                     r#type: Some(sn::v1_frame::FrameType::Response.into()),
                     connection_response: Some(sn::ConnectionResponseFrame {
                         status: Some(status.into()),
@@ -247,13 +175,7 @@ async fn run(
                     return Ok(Outcome::Rejected);
                 }
             }
-            _ = keepalive.tick() => {
-                session.send_offline(nc::V1Frame {
-                    r#type: Some(nc::v1_frame::FrameType::KeepAlive.into()),
-                    keep_alive: Some(nc::KeepAliveFrame { ack: Some(false), ..Default::default() }),
-                    ..Default::default()
-                }).await?;
-            }
+            _ = keepalive.tick() => session.link.send_keepalive().await?,
         }
     }
 }
@@ -268,18 +190,9 @@ impl Session {
         let last = chunk.flags() & 1 != 0;
         match header.r#type() {
             nc::payload_transfer_frame::payload_header::PayloadType::Bytes => {
-                if header.total_size() > MAX_BYTES_PAYLOAD {
-                    bail!("bytes payload of {} bytes", header.total_size());
-                }
-                let buffer = self.bytes.entry(id).or_default();
-                if chunk.offset() != buffer.len() as i64 {
-                    bail!("bytes payload chunk at {} after {} bytes", chunk.offset(), buffer.len());
-                }
-                buffer.extend_from_slice(chunk.body());
-                if !last {
+                let Some((id, data)) = self.bytes.add(&header, &chunk)? else {
                     return Ok(None);
-                }
-                let data = self.bytes.remove(&id).unwrap_or_default();
+                };
                 if let Some(title) = self.text_ids.remove(&id) {
                     let text = String::from_utf8_lossy(&data).into_owned();
                     info!("received text {title:?}");
@@ -364,118 +277,6 @@ impl Session {
         }
     }
 
-    async fn send_offline(&mut self, v1: nc::V1Frame) -> Result<()> {
-        let sealed = self.channel.seal(&offline_frame(v1));
-        write_frame(&mut self.writer, &sealed).await
-    }
-
-    /// Sends a sharing frame as a bytes payload: one chunk with the data,
-    /// one empty chunk with the last chunk flag, as Android does.
-    async fn send_sharing(&mut self, v1: sn::V1Frame) -> Result<()> {
-        let data = sn::Frame {
-            version: Some(sn::frame::Version::V1.into()),
-            v1: Some(v1),
-        }
-        .encode_to_vec();
-        let header = nc::payload_transfer_frame::PayloadHeader {
-            id: Some(rand::thread_rng().r#gen::<i64>().abs()),
-            r#type: Some(nc::payload_transfer_frame::payload_header::PayloadType::Bytes.into()),
-            total_size: Some(data.len() as i64),
-            is_sensitive: Some(false),
-            ..Default::default()
-        };
-        let size = data.len() as i64;
-        for (offset, flags, body) in [(0, 0, data), (size, 1, Vec::new())] {
-            self.send_offline(nc::V1Frame {
-                r#type: Some(nc::v1_frame::FrameType::PayloadTransfer.into()),
-                payload_transfer: Some(nc::PayloadTransferFrame {
-                    packet_type: Some(nc::payload_transfer_frame::PacketType::Data.into()),
-                    payload_header: Some(header.clone()),
-                    payload_chunk: Some(nc::payload_transfer_frame::PayloadChunk {
-                        offset: Some(offset),
-                        flags: Some(flags),
-                        body: Some(body),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            })
-            .await?;
-        }
-        Ok(())
-    }
-}
-
-fn offline_frame(v1: nc::V1Frame) -> nc::OfflineFrame {
-    nc::OfflineFrame {
-        version: Some(nc::offline_frame::Version::V1.into()),
-        v1: Some(v1),
-    }
-}
-
-fn v1(frame: &nc::OfflineFrame, expected: nc::v1_frame::FrameType) -> Result<&nc::V1Frame> {
-    let v1 = frame.v1.as_ref().ok_or_else(|| anyhow!("offline frame without v1"))?;
-    if v1.r#type() != expected {
-        bail!("expected {expected:?}, got {:?}", v1.r#type());
-    }
-    Ok(v1)
-}
-
-/// Reads length prefixed frames until the connection ends.
-async fn read_frames(mut reader: OwnedReadHalf, tx: mpsc::Sender<Vec<u8>>) {
-    loop {
-        let mut len = [0u8; 4];
-        if reader.read_exact(&mut len).await.is_err() {
-            return;
-        }
-        let len = u32::from_be_bytes(len) as usize;
-        if len > MAX_FRAME {
-            warn!("dropping connection, frame of {len} bytes");
-            return;
-        }
-        let mut frame = vec![0u8; len];
-        if reader.read_exact(&mut frame).await.is_err() || tx.send(frame).await.is_err() {
-            return;
-        }
-    }
-}
-
-async fn next(rx: &mut mpsc::Receiver<Vec<u8>>) -> Result<Vec<u8>> {
-    match tokio::time::timeout(READ_TIMEOUT, rx.recv()).await {
-        Ok(Some(frame)) => Ok(frame),
-        Ok(None) => bail!("connection closed"),
-        Err(_) => bail!("no frame for {} s", READ_TIMEOUT.as_secs()),
-    }
-}
-
-async fn write_frame(writer: &mut OwnedWriteHalf, data: &[u8]) -> Result<()> {
-    writer.write_all(&(data.len() as u32).to_be_bytes()).await?;
-    writer.write_all(data).await?;
-    writer.flush().await?;
-    Ok(())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// The peer's MAC from the kernel neighbour table, IPv4 only.
-fn peer_mac(ip: Option<std::net::IpAddr>) -> Option<String> {
-    let ip = ip?.to_string();
-    let table = std::fs::read_to_string("/proc/net/arp").ok()?;
-    table
-        .lines()
-        .skip(1)
-        .map(|line| line.split_whitespace().collect::<Vec<_>>())
-        .find(|cols| cols.first() == Some(&ip.as_str()))
-        .and_then(|cols| cols.get(3).map(|mac| mac.to_string()))
-}
-
-fn random_bytes(len: usize) -> Vec<u8> {
-    let mut data = vec![0u8; len];
-    rand::thread_rng().fill(data.as_mut_slice());
-    data
 }
 
 /// A free path in `dir` for a name the sender chose. Only the last path
