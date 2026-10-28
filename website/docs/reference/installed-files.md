@@ -228,7 +228,7 @@ audio behavior and diagnostics.
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
 | `/etc/systemd/system/kait2en-macos-mount.service` | Mounts the readable macOS volumes read-only under `/media/macOS` at boot |
 | `/usr/local/libexec/kait2en/kait2en-macos-mount` | Finds the readable volumes in the internal APFS container and mounts them as subdirectories by role |
-| `/etc/udev/rules.d/90-kait2en-macos.rules` | Names the internal APFS partition macOS in file managers |
+| `/etc/udev/rules.d/90-kait2en-macos.rules` | Hides the internal APFS partition from file managers, the volumes are reached through `/media/macOS` |
 | `/etc/systemd/system/t2-services-suspend.service` | Runs feature sleep/resume hooks around sleep |
 | `/usr/local/libexec/t2-services/t2-ncm-sleep` | Runs installed feature hooks before sleep and after resume |
 | `/usr/local/libexec/t2-services/sleep.d/t2-ave` | Closes/reopens sessions only when the AVE daemon is running |
@@ -290,8 +290,9 @@ so the whole macOS install is browsed from one place:
 
 The probe runs on every boot because the volume order differs between Macs and
 macOS versions. The macOS Data volume is encrypted and stays unmounted, and the
-VM volume is left out. The mounts carry `x-gvfs-show`, so file managers list
-them as one macOS entry with the volumes as folders.
+VM volume is left out. `/media/macOS` itself is a small tmpfs marked
+`x-gvfs-show`, and the volume mounts are marked `x-gvfs-hide`, so file managers
+list one macOS entry with the volumes as folders.
 
 ## Apple firmware from the installer USB drive
 

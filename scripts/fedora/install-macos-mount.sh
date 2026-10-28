@@ -22,7 +22,8 @@ tee /usr/local/libexec/kait2en/kait2en-macos-mount >/dev/null <<'EOF'
 #!/bin/sh
 
 # A single parent directory holds every readable volume as a subdirectory.
-# The parent itself is a plain directory on the root filesystem, not a mount.
+# The parent is a small tmpfs, the only mount file managers list, so the macOS
+# install shows up as one entry with the volumes as folders.
 PARENT=/media/macOS
 
 case "$1" in
@@ -30,6 +31,7 @@ stop)
 	for t in "$PARENT"/*; do
 		[ -d "$t" ] && mountpoint -q "$t" && umount "$t"
 	done
+	mountpoint -q "$PARENT" && umount "$PARENT"
 	exit 0
 	;;
 esac
@@ -133,14 +135,17 @@ probe=$(mktemp -d /run/kait2en-macos-mount.XXXXXX) || exit 1
 mounted_any=0
 last_err=
 mkdir -p "$PARENT"
+mountpoint -q "$PARENT" ||
+	mount -t tmpfs -o mode=0755,size=64k,x-gvfs-show,x-gvfs-name=macOS \
+		kait2en-macos "$PARENT" || exit 1
 
 # Internal APFS partitions only. External disks are left to the file manager,
 # and loop devices (mounted dmgs) are skipped so manual experiments are not
 # touched.
 # mount -i skips /sbin/mount.apfs. The apfs-fuse package installs that helper
 # and it would take over from the kernel module and fail on these containers.
-# The disk carries the udisks system hint, so file managers hide its mounts
-# unless they are marked with x-gvfs-show.
+# x-gvfs-hide keeps the volumes out of the file manager sidebar, they are
+# reached through the parent.
 for dev in $(lsblk -lnpo PATH,FSTYPE,RM,TYPE |
 	awk '$2 == "apfs" && $3 == "0" && $4 == "part" { print $1 }'); do
 	if ! vols=$(readable_vols); then
@@ -153,7 +158,7 @@ for dev in $(lsblk -lnpo PATH,FSTYPE,RM,TYPE |
 			umount "$probe"
 			if [ -n "$role" ] && ! mountpoint -q "$PARENT/$role"; then
 				mkdir -p "$PARENT/$role"
-				if mount -i -t apfs -o ro,vol="$vol",x-gvfs-show \
+				if mount -i -t apfs -o ro,vol="$vol",x-gvfs-hide \
 					"$dev" "$PARENT/$role"; then
 					mounted_any=1
 				fi
@@ -189,11 +194,11 @@ WantedBy=multi-user.target
 EOF
 chmod 0644 /etc/systemd/system/kait2en-macos-mount.service
 
-# File managers name the volume of the mounts after the udisks hint, which
-# otherwise falls back to the partition size. All volumes share the one
-# partition, so it is named macOS.
+# File managers would list the partition itself as a mountable entry, and a
+# click mounts the encrypted Data volume. The volumes are reached through
+# /media/macOS, so the partition is hidden.
 tee /etc/udev/rules.d/90-kait2en-macos.rules >/dev/null <<'EOF'
-SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", KERNEL=="nvme*", ENV{ID_FS_TYPE}=="apfs", ENV{UDISKS_NAME}="macOS"
+SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", KERNEL=="nvme*", ENV{ID_FS_TYPE}=="apfs", ENV{UDISKS_IGNORE}="1"
 EOF
 chmod 0644 /etc/udev/rules.d/90-kait2en-macos.rules
 udevadm control --reload
