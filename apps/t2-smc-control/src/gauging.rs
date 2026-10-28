@@ -1,12 +1,14 @@
 //! Gauging mitigation like BatteryGaugingAccuracyManager in powerd (macOS
 //! 15.4.1). A permanent charge limit keeps the gauge from learning Qmax and
 //! DOD0. powerd lifts the limit for a full charge when DOD0 did not change
-//! for 3 days, Qmax for 14 days or the last full charge is older than 21
-//! days, and restores it once none of that holds anymore.
+//! for 3 days or the last full charge is older than 21 days, and restores it
+//! once none of that holds anymore.
 //!
-//! powerd also checks that the last qualified Qmax is recent and its DOD0
-//! large enough before it charges for Qmax. The SMC does not expose these
-//! values, so that check is left out.
+//! powerd also charges when Qmax did not change for 14 days, but only after a
+//! qualified Qmax within the last 30 hours. It learns that from the battery
+//! property Dod0AtQualifiedQmax, SMC key BDAQ. T2 SMCs do not have BDAQ
+//! (bridgeOS 23.16 and 24.16), so powerd never charges for Qmax there and
+//! neither does this.
 
 use std::cell::RefCell;
 use std::fs;
@@ -20,7 +22,6 @@ const STATE_FILE: &str = "/var/lib/t2-smc-control/gauging";
 const BATTERY_STATUS: &str = "/sys/class/power_supply/BAT0/status";
 
 const DOD0_MAX_AGE: u64 = 3 * 86_400;
-const QMAX_MAX_AGE: u64 = 14 * 86_400;
 const FULL_CHARGE_MAX_AGE: u64 = 21 * 86_400;
 /// powerd gives up on a full charge attempt after 12 hours
 const FULL_CHARGE_ATTEMPT: u64 = 12 * 3_600;
@@ -30,8 +31,6 @@ const SIGTERM: i32 = 15;
 
 #[derive(Default, Debug, PartialEq)]
 struct State {
-    qmax: String,
-    qmax_changed: u64,
     dod0: String,
     dod0_changed: u64,
     full_charge: u64,
@@ -46,8 +45,6 @@ impl State {
             let Some((key, value)) = line.split_once('=') else { continue };
             let number = || value.parse().unwrap_or(0);
             match key {
-                "qmax" => state.qmax = value.to_owned(),
-                "qmax_changed" => state.qmax_changed = number(),
                 "dod0" => state.dod0 = value.to_owned(),
                 "dod0_changed" => state.dod0_changed = number(),
                 "full_charge" => state.full_charge = number(),
@@ -60,8 +57,8 @@ impl State {
 
     fn save(&self) {
         let text = format!(
-            "qmax={}\nqmax_changed={}\ndod0={}\ndod0_changed={}\nfull_charge={}\nattempt_started={}\n",
-            self.qmax, self.qmax_changed, self.dod0, self.dod0_changed, self.full_charge, self.attempt_started
+            "dod0={}\ndod0_changed={}\nfull_charge={}\nattempt_started={}\n",
+            self.dod0, self.dod0_changed, self.full_charge, self.attempt_started
         );
         let path = Path::new(STATE_FILE);
         if let Some(dir) = path.parent() {
@@ -73,11 +70,7 @@ impl State {
     }
 
     /// disableSocLimitPolicy: true while a full charge is needed
-    fn update(&mut self, now: u64, qmax: &str, dod0: &str, fully_charged: bool) -> bool {
-        if self.qmax != qmax {
-            self.qmax = qmax.to_owned();
-            self.qmax_changed = now;
-        }
+    fn update(&mut self, now: u64, dod0: &str, fully_charged: bool) -> bool {
         if self.dod0 != dod0 {
             self.dod0 = dod0.to_owned();
             self.dod0_changed = now;
@@ -87,7 +80,7 @@ impl State {
             self.attempt_started = 0;
         }
 
-        let mut charge = now - self.qmax_changed >= QMAX_MAX_AGE || now - self.dod0_changed >= DOD0_MAX_AGE;
+        let mut charge = now - self.dod0_changed >= DOD0_MAX_AGE;
         if now - self.full_charge > FULL_CHARGE_MAX_AGE {
             if self.attempt_started == 0 {
                 self.attempt_started = now;
@@ -122,12 +115,7 @@ fn set_suspended(hwmon: &Path, suspended: bool) {
 }
 
 fn tick(hwmon: &Path, state: &mut State) {
-    let (Some(qmax), Some(dod0)) = (
-        read_trimmed(&hwmon.join("smc_battery_qmax_mah")),
-        read_trimmed(&hwmon.join("smc_battery_dod0")),
-    ) else {
-        return;
-    };
+    let Some(dod0) = read_trimmed(&hwmon.join("smc_battery_dod0")) else { return };
     // sbs reports Full while the limit holds, t2sbs only when the gauge flags
     // it, so the SMC SoC decides
     let fully_charged = matches!(read_trimmed(Path::new(BATTERY_STATUS)).as_deref(), Some("Full" | "Not charging"))
@@ -135,7 +123,7 @@ fn tick(hwmon: &Path, state: &mut State) {
             .and_then(|soc| soc.parse::<u32>().ok())
             .is_some_and(|soc| soc >= 99);
     let before = format!("{state:?}");
-    let charge = state.update(now(), &qmax, &dod0, fully_charged);
+    let charge = state.update(now(), &dod0, fully_charged);
     if format!("{state:?}") != before {
         state.save();
     }
@@ -180,8 +168,6 @@ mod tests {
 
     fn settled(now: u64) -> State {
         State {
-            qmax: "4344".into(),
-            qmax_changed: now,
             dod0: "8736".into(),
             dod0_changed: now,
             full_charge: now,
@@ -192,20 +178,9 @@ mod tests {
     #[test]
     fn dod0_unchanged_for_three_days_asks_for_a_full_charge() {
         let mut state = settled(1_000_000);
-        assert!(!state.update(1_000_000 + 2 * DAY, "4344", "8736", false));
-        assert!(state.update(1_000_000 + 3 * DAY, "4344", "8736", false));
-        assert!(!state.update(1_000_000 + 3 * DAY + 1, "4344", "8700", false));
-    }
-
-    #[test]
-    fn qmax_unchanged_for_fourteen_days_asks_for_a_full_charge() {
-        let mut state = settled(1_000_000);
-        let mut now = 1_000_000;
-        for day in 1..14 {
-            now = 1_000_000 + day * DAY;
-            assert!(!state.update(now, "4344", &format!("{}", 8000 + day), false));
-        }
-        assert!(state.update(now + DAY, "4344", "9000", false));
+        assert!(!state.update(1_000_000 + 2 * DAY, "8736", false));
+        assert!(state.update(1_000_000 + 3 * DAY, "8736", false));
+        assert!(!state.update(1_000_000 + 3 * DAY + 1, "8700", false));
     }
 
     #[test]
@@ -213,13 +188,13 @@ mod tests {
         let start = 1_000_000;
         let mut state = settled(start);
         let mut now = start;
-        // Keep Qmax and DOD0 moving so only the full charge age matters
+        // Keep DOD0 moving so only the full charge age matters
         for day in 1..=22 {
             now = start + day * DAY;
-            let charge = state.update(now, &format!("{}", 4000 + day), &format!("{}", 8000 + day), false);
+            let charge = state.update(now, &format!("{}", 8000 + day), false);
             assert_eq!(charge, day == 22, "day {day}");
         }
-        assert!(state.update(now + 6 * 3_600, "4100", "8100", false));
-        assert!(!state.update(now + 13 * 3_600, "4101", "8101", false));
+        assert!(state.update(now + 6 * 3_600, "8100", false));
+        assert!(!state.update(now + 13 * 3_600, "8101", false));
     }
 }

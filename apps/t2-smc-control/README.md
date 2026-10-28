@@ -56,11 +56,14 @@ Saving -> Charge Limit.
 A permanent charge limit keeps the battery gauge from learning Qmax and DOD0.
 Its estimate drifts and the remaining capacity can collapse under load. powerd
 on macOS therefore lifts the limit for a full charge when DOD0 did not change
-for 3 days, Qmax for 14 days or the last full charge is older than 21 days.
-It gives up on a full charge after 12 hours.
+for 3 days or the last full charge is older than 21 days. It gives up on a
+full charge after 12 hours. powerd also charges when Qmax did not change for
+14 days, but only after a qualified Qmax within the last 30 hours, which it
+learns from the SMC key `BDAQ`. T2 SMCs do not have `BDAQ`, so powerd never
+charges for Qmax on these Macs.
 
 `t2-smc-control --daemon`, run by `t2-smc-gaugingd.service`, does the same. It
-reads Qmax and DOD0 per cell from `t2smc` and sets
+reads DOD0 per cell from `t2smc` and sets
 `battery_charge_limit_suspended` while a full charge is needed. The limit set
 in the desktop stays as it is. The dates live in
 `/var/lib/t2-smc-control/gauging`.
