@@ -27,6 +27,7 @@ ADWAITA_PLACES=/usr/share/icons/Adwaita/scalable/places
 BG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backgrounds/kait2en-vornehm"
 BG_PROPS="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-background-properties/kait2en-vornehm.xml"
 BG_DEFAULT=black-viii.jpg
+BG_DEFAULT_LIGHT=white-viii.jpg
 SETTINGS_PREVIOUS="$BG_DIR/previous-settings"
 PTYXIS_PALETTES="${XDG_DATA_HOME:-$HOME/.local/share}/org.gnome.Ptyxis/palettes"
 PTYXIS_PALETTE=kait2en-vornehm
@@ -90,21 +91,30 @@ build_icon_theme() {
 }
 
 # The BLACK wallpapers by Jean-Marc Denis, listed in the GNOME settings.
-# Their credits are installed next to them.
+# Their credits are installed next to them. A BLACK image with a WHITE
+# image of the same number is one entry, GNOME shows the WHITE image in
+# the default style and the BLACK image in the dark style.
 install_backgrounds() {
-	local image name
+	local image name light
 	install -d -m 0755 "$BG_DIR" "${BG_PROPS%/*}"
 	install -m 0644 "$THEME_SRC/backgrounds"/*.jpg "$THEME_SRC/backgrounds/CREDITS.md" "$BG_DIR/"
 	{
 		printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
 			'<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">' '<wallpapers>'
-		for image in "$BG_DIR"/*.jpg; do
+		for image in "$BG_DIR"/black-*.jpg; do
 			name=${image##*/}
 			name=${name%.jpg}
 			name=${name#black-}
+			light="$BG_DIR/white-$name.jpg"
 			printf '  <wallpaper deleted="false">\n'
-			printf '    <name>BLACK %s, Jean-Marc Denis</name>\n' "${name^^}"
-			printf '    <filename>%s</filename>\n' "$image"
+			if [ -f "$light" ]; then
+				printf '    <name>WHITE and BLACK %s, Jean-Marc Denis</name>\n' "${name^^}"
+				printf '    <filename>%s</filename>\n' "$light"
+				printf '    <filename-dark>%s</filename-dark>\n' "$image"
+			else
+				printf '    <name>BLACK %s, Jean-Marc Denis</name>\n' "${name^^}"
+				printf '    <filename>%s</filename>\n' "$image"
+			fi
 			printf '    <options>zoom</options>\n'
 			printf '    <shade_type>solid</shade_type>\n'
 			printf '    <pcolor>#000000</pcolor>\n'
@@ -316,7 +326,7 @@ prepare_ptyxis
 save_look_settings
 apply_ptyxis
 for_each_firefox_profile install_firefox_profile "installing KaiT2en Vornehm in Firefox profile"
-gsettings set org.gnome.desktop.background picture-uri "file://$BG_DIR/$BG_DEFAULT"
+gsettings set org.gnome.desktop.background picture-uri "file://$BG_DIR/$BG_DEFAULT_LIGHT"
 gsettings set org.gnome.desktop.background picture-uri-dark "file://$BG_DIR/$BG_DEFAULT"
 gsettings set org.gnome.desktop.background picture-options zoom
 gsettings set org.gnome.desktop.interface color-scheme prefer-dark

@@ -228,13 +228,22 @@ class RoundedMask extends shaderEffect('RoundedMaskBase',
 // Live glass behind a floating surface of the shell, a menu, a dialog or
 // a notification banner. What lies behind it is copied, blurred and cut to
 // its rounded shape, the surface paints on top. The window group has no
-// size of its own, so its parts are cloned one by one. Every frame the
-// glass copies the place, zoom and opacity of the surface on screen, and
-// it goes away with the surface.
+// size of its own, so its parts are cloned one by one. A clone paints its
+// source also while the source is hidden, mapping it for that paint. The
+// shell then runs map handlers in the middle of the paint, the search
+// entry of a hidden overview adds and removes stage actions there. So the
+// glass only clones what is visible and builds anew once a source shows
+// or hides. Every frame the glass copies the place, zoom and opacity of
+// the surface on screen, and it goes away with the surface. A lasting
+// surface, the banner, only hides while a menu of the top bar is open and
+// gets fresh glass after.
 class GlassSurface {
-    constructor(surface, parent, below) {
+    constructor(surface, parent, below, lasting) {
         this._surface = surface;
+        this._lasting = lasting;
         this._wasMapped = false;
+        this._stale = false;
+        this._sources = [];
 
         this._content = new St.Widget();
         this._blur = new Shell.BlurEffect({
@@ -262,10 +271,19 @@ class GlassSurface {
     }
 
     _fill() {
-        if (Main.overview.visible) {
-            this._content.add_child(new Clutter.Clone({
-                source: Main.layoutManager.overviewGroup,
-            }));
+        this._unwatch();
+        this._bgManager?.destroy();
+        this._bgManager = null;
+        this._content.destroy_all_children();
+        this._stale = false;
+
+        // The shell hides the windows while the overview shows and the
+        // overview while the windows show.
+        const {overviewGroup} = Main.layoutManager;
+        this._watch(overviewGroup);
+        this._watch(global.window_group);
+        if (overviewGroup.visible) {
+            this._content.add_child(new Clutter.Clone({source: overviewGroup}));
             return;
         }
 
@@ -283,9 +301,12 @@ class GlassSurface {
             controlPosition: false,
         });
 
+        if (!global.window_group.visible)
+            return;
         for (const windowActor of global.get_window_actors()) {
             if (!windowActor.visible)
                 continue;
+            this._watch(windowActor);
             this._content.add_child(new Clutter.Clone({
                 source: windowActor,
                 x: windowActor.x,
@@ -294,22 +315,43 @@ class GlassSurface {
         }
     }
 
+    _watch(source) {
+        source.connectObject('notify::visible', () => this._fill(), this);
+        this._sources.push(source);
+    }
+
+    _unwatch() {
+        this._sources.forEach(source => source.disconnectObject(this));
+        this._sources = [];
+    }
+
     _sync() {
         const surface = this._surface;
         if (!surface.mapped) {
-            // A surface that was on screen and left it is done.
-            if (this._wasMapped)
+            // A menu or dialog that was on screen and left it is done.
+            if (this._wasMapped && !this._lasting) {
                 this.destroy();
-            else
-                this._glass.hide();
+                return;
+            }
+            this._glass.hide();
+            this._stale = this._wasMapped;
             return;
         }
         this._wasMapped = true;
 
+        // While a child of the surface changes size, for example the
+        // volume icon next to its slider, the surface waits for a new
+        // layout. It keeps its place, so the glass stays where it is.
+        if (!surface.has_allocation())
+            return;
+
+        if (this._stale)
+            this._fill();
+
         const [stageX, stageY] = surface.get_transformed_position();
         const [width, height] = surface.get_transformed_size();
         const [ok, x, y] = this._glass.get_parent().transform_stage_point(stageX, stageY);
-        if (!ok || !surface.has_allocation() || !(width >= 1 && height >= 1)) {
+        if (!ok || !(width >= 1 && height >= 1)) {
             this._glass.hide();
             return;
         }
@@ -334,6 +376,7 @@ class GlassSurface {
         this._timeline.stop();
         this._timeline = null;
         this._surface.disconnectObject(this);
+        this._unwatch();
         this._bgManager?.destroy();
         this._bgManager = null;
         GlassSurface.active.delete(this);
@@ -345,9 +388,9 @@ class GlassSurface {
     }
 
     // Glass is optional, a surface without a place for it opens plain.
-    static follow(surface, parent, below) {
+    static follow(surface, parent, below, lasting = false) {
         if (surface && parent && below?.get_parent() === parent)
-            GlassSurface.active.add(new GlassSurface(surface, parent, below));
+            GlassSurface.active.add(new GlassSurface(surface, parent, below, lasting));
     }
 }
 GlassSurface.active = new Set();
@@ -380,8 +423,13 @@ class Glass {
             original => function (...args) {
                 original.call(this, ...args);
                 if (this._banner)
-                    GlassSurface.follow(this._banner, this, this._bannerBin);
+                    GlassSurface.follow(this._banner, this, this._bannerBin, true);
             });
+
+        // The shell enables extensions while it starts up, a banner of
+        // the login can already be on screen and gets its glass now.
+        if (tray._banner)
+            GlassSurface.follow(tray._banner, tray, tray._bannerBin, true);
     }
 
     destroy() {
@@ -390,12 +438,24 @@ class Glass {
     }
 }
 
-// App icons sit on a dark tile like on macOS Tahoe. The tile fades from
-// gray 49 to 19, a fine light rim runs along its edge and fades out
-// towards the bottom, and the icon fills most of the tile.
+// App icons sit on a tile like on macOS Tahoe. In the dark style the
+// tile fades from gray 49 to 19 and a fine light rim runs along its edge,
+// fading out towards the bottom. In the light style the tile fades from
+// white to gray 232 and the rim is a dark hairline. The icon fills most
+// of the tile.
+const TILE_STYLES = {
+    dark: {top: 0.192, bottom: 0.075, rim: 1, rimTop: 0.34, rimBottom: 0.06},
+    light: {top: 1, bottom: 0.91, rim: 0, rimTop: 0.08, rimBottom: 0.14},
+};
+
 const TILE_DECLARATIONS = `
 uniform sampler2D tex;
 uniform float size;
+uniform float top;
+uniform float bottom;
+uniform float rimGray;
+uniform float rimTop;
+uniform float rimBottom;
 `;
 
 const TILE_CODE = `
@@ -408,14 +468,14 @@ float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
 float inside = clamp(0.5 - d, 0.0, 1.0);
 float rim = inside * clamp(d + max(1.0, size * ${ICON_TILE_RIM}) + 0.5, 0.0, 1.0);
 
-vec4 color = vec4(mix(vec3(0.192), vec3(0.075), uv.y) * inside, inside);
+vec4 color = vec4(vec3(mix(top, bottom, uv.y)) * inside, inside);
 vec2 iconUv = (uv - 0.5) / ${ICON_TILE_FILL} + 0.5;
 if (all(greaterThanEqual(iconUv, vec2(0.0))) && all(lessThanEqual(iconUv, vec2(1.0)))) {
     vec4 icon = texture2D(tex, iconUv);
     color = icon + color * (1.0 - icon.a);
 }
-float light = rim * (0.34 - 0.28 * uv.y) * (1.08 - 0.16 * uv.x);
-color = vec4(light) + color * (1.0 - light);
+float edge = rim * mix(rimTop, rimBottom, uv.y) * (1.08 - 0.16 * uv.x);
+color = vec4(vec3(rimGray * edge), edge) + color * (1.0 - edge);
 cogl_color_out = color * cogl_color_in.a;
 `;
 
@@ -424,7 +484,13 @@ class IconTile extends shaderEffect('IconTileBase',
     TILE_DECLARATIONS, TILE_CODE, true) {
     vfunc_paint_target(node, paintContext) {
         const actor = this.get_actor();
+        const style = TILE_STYLES[Main.getStyleVariant()] ?? TILE_STYLES.dark;
         this.setUniform('size', [actor.width * actor.get_resource_scale()]);
+        this.setUniform('top', [style.top]);
+        this.setUniform('bottom', [style.bottom]);
+        this.setUniform('rimGray', [style.rim]);
+        this.setUniform('rimTop', [style.rimTop]);
+        this.setUniform('rimBottom', [style.rimBottom]);
         super.vfunc_paint_target(node, paintContext);
     }
 });
@@ -624,6 +690,33 @@ function repackPages(appDisplay) {
         appDisplay._savePages();
 }
 
+// GNOME Settings only offers the default and the dark style, and the
+// shell stays dark on default. Vornehm follows the switch, so default
+// means a light shell. The shell sets the scheme of its mode again on
+// every mode change, a notify on the setting reloads all stylesheets.
+class LightStyle {
+    constructor() {
+        Main.sessionMode.connectObject('updated', () => this._apply(), this);
+        this._apply();
+    }
+
+    _apply() {
+        this._set('prefer-dark', 'prefer-light');
+    }
+
+    _set(from, to) {
+        if (Main.sessionMode.colorScheme !== from)
+            return;
+        Main.sessionMode.colorScheme = to;
+        St.Settings.get().notify('color-scheme');
+    }
+
+    destroy() {
+        Main.sessionMode.disconnectObject(this);
+        this._set('prefer-light', 'prefer-dark');
+    }
+}
+
 export default class Kait2enVornehmExtension extends Extension {
     enable() {
         this._overviewBackground = new OverviewBackground();
@@ -632,9 +725,12 @@ export default class Kait2enVornehmExtension extends Extension {
         this._dockLift = new DockLift(Main.overview.dash);
         this._iconTiles = new IconTiles();
         this._glass = new Glass();
+        this._lightStyle = new LightStyle();
     }
 
     disable() {
+        this._lightStyle?.destroy();
+        this._lightStyle = null;
         this._glass?.destroy();
         this._glass = null;
         this._iconTiles?.destroy();
