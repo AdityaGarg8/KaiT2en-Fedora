@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_icons.html" as icon %}
 
 {% block title %}{{ doc.title }} - {{ site.name }}{% endblock %}
 {% block description %}{{ doc.description }}{% endblock %}
@@ -12,7 +13,18 @@
                 <h4>{{ group.title }}</h4>
                 <ul>
                     {% for section in group.sections %}
+                    {% if section.children %}
+                    <li class="nav-parent">
+                        <button class="nav-toggle" type="button" aria-expanded="false" onclick="toggleNavChildren(this)">{{ icon.chevron(10) }}{{ section.title }}</button>
+                        <ul class="nav-children" hidden>
+                            {% for child in section.children %}
+                            <li><a href="#{{ child.id }}">{{ child.title }}</a></li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    {% else %}
                     <li><a href="#{{ section.id }}">{{ section.title }}</a></li>
+                    {% endif %}
                     {% endfor %}
                 </ul>
                 {% endfor %}
@@ -26,6 +38,12 @@
                 <h2>{{ section.title }}</h2>
                 {{ section.html }}
             </section>
+            {% for child in section.children %}
+            <section id="{{ child.id }}">
+                <h2>{{ child.title }}</h2>
+                {{ child.html }}
+            </section>
+            {% endfor %}
             {% endfor %}
             {% endfor %}
         </main>
@@ -38,7 +56,18 @@
                 <h4>{{ group.title }}</h4>
                 <div class="nav-modal-toc">
                     {% for section in group.sections %}
+                    {% if section.children %}
+                    <div class="nav-parent">
+                        <button class="nav-toggle" type="button" aria-expanded="false" onclick="toggleNavChildren(this)">{{ icon.chevron(10) }}{{ section.title }}</button>
+                        <div class="nav-children" hidden>
+                            {% for child in section.children %}
+                            <a href="#{{ child.id }}" onclick="closeMenu()">{{ child.title }}</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% else %}
                     <a href="#{{ section.id }}" onclick="closeMenu()">{{ section.title }}</a>
+                    {% endif %}
                     {% endfor %}
                 </div>
                 {% endfor %}

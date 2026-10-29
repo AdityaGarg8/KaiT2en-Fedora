@@ -75,6 +75,7 @@ class Section:
     id: str
     title: str
     html: Markup
+    children: list["Section"] = field(default_factory=list)
 
 
 @dataclass
@@ -255,35 +256,44 @@ def build_documentation(config: dict[str, Any]) -> tuple[list[DocGroup], dict[st
     seen: set[str] = set()
 
     # Two passes: anchors have to exist before links between files are rewritten.
-    staged: list[tuple[DocGroup, Path, list[tuple[str, str, str]]]] = []
+    # A page's `children` become sections nested under its first section.
+    staged: list[tuple[list[Section], Path, list[tuple[str, str, str]], list[Section]]] = []
+
+    def stage(entry: dict[str, Any], target: list[Section]) -> None:
+        source = DOCS_DIR / entry["file"]
+        if not source.is_file():
+            raise BuildError(f"site.yml: docs/{entry['file']} does not exist")
+        meta, text = split_front_matter(source)
+        title, body = strip_h1(text, source)
+        title = entry.get("title") or meta.get("title") or title
+
+        pieces: list[tuple[str, str, str]] = []
+        if entry.get("split") == "h2":
+            for chunk_title, chunk in split_on_h2(body, source):
+                name = title if chunk_title is None else chunk_title
+                pieces.append((make_id(name, seen), name, chunk))
+        else:
+            pieces.append((make_id(title, seen), title, body))
+        children: list[Section] = []
+        staged.append((target, source, pieces, children))
+        anchors[entry["file"]] = pieces[0][0]
+        for child in entry.get("children", []):
+            stage(child, children)
+
     for raw_group in config["documentation"]["groups"]:
         group = DocGroup(title=raw_group["title"])
         groups.append(group)
         for entry in raw_group["pages"]:
-            source = DOCS_DIR / entry["file"]
-            if not source.is_file():
-                raise BuildError(f"site.yml: docs/{entry['file']} does not exist")
-            meta, text = split_front_matter(source)
-            title, body = strip_h1(text, source)
-            title = entry.get("title") or meta.get("title") or title
+            stage(entry, group.sections)
 
-            pieces: list[tuple[str, str, str]] = []
-            if entry.get("split") == "h2":
-                for chunk_title, chunk in split_on_h2(body, source):
-                    name = title if chunk_title is None else chunk_title
-                    pieces.append((make_id(name, seen), name, chunk))
-            else:
-                pieces.append((make_id(title, seen), title, body))
-            staged.append((group, source, pieces))
-            anchors[entry["file"]] = pieces[0][0]
-
-    for group, source, pieces in staged:
-        for section_id, title, body in pieces:
+    for target, source, pieces, children in staged:
+        for index, (section_id, title, body) in enumerate(pieces):
             html = render_markdown(demote_headings(body), seen)
             html = rewrite_doc_links(html, anchors, source)
-            group.sections.append(
-                Section(id=section_id, title=title, html=wrap_code_blocks(html))
-            )
+            section = Section(id=section_id, title=title, html=wrap_code_blocks(html))
+            if index == 0:
+                section.children = children
+            target.append(section)
     return groups, anchors
 
 
@@ -574,7 +584,7 @@ def build(output: Path, site_url: str | None = None, noindex: bool = False) -> N
 
     print(
         f"built {output.relative_to(ROOT) if output.is_relative_to(ROOT) else output}: "
-        f"{sum(len(g.sections) for g in doc_groups)} doc sections, "
+        f"{sum(1 + len(s.children) for g in doc_groups for s in g.sections)} doc sections, "
         f"{len(posts)} blog posts, {len(index_sections)} index sections"
     )
 

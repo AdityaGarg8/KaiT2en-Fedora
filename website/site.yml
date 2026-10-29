@@ -112,16 +112,32 @@ documentation:
         - {file: installation.md, split: h2, title: Overview}
     - title: Post-install
       pages:
-        - {file: post-install/kait2en-applications.md, title: KAIT2EN applications}
+        - file: post-install/kait2en-applications.md
+          children:
+            - {file: post-install/applications/kait2en-update.md}
+            - {file: post-install/applications/t2-fan-control.md}
+            - {file: post-install/applications/t2-smc-control.md}
+            - {file: post-install/applications/t2-zone-power.md}
+            - {file: post-install/applications/t2-power-explorer.md}
+            - {file: post-install/applications/t2-journal.md}
+            - {file: post-install/applications/t2-debug.md}
+            - {file: post-install/applications/t2-power-tune.md}
+            - {file: post-install/applications/t2-force-click.md}
+            - {file: post-install/applications/t2-touch-bar.md}
+            - {file: post-install/applications/t2-hybrid-gpu-control.md}
+            - {file: post-install/applications/t2-gpu-control.md}
+            - {file: post-install/applications/t2-share.md}
+            - {file: post-install/applications/t2-kernel-builder.md}
         - {file: post-install/audio-dsp.md}
+        - {file: post-install/automatic-brightness.md}
         - {file: post-install/butterfly-keyboard.md}
-        - {file: post-install/configuring-gpus.md, title: Configure GPUs}
+        - {file: post-install/configuring-gpus.md}
         - {file: post-install/hardware-video-decoding.md}
         - {file: post-install/hardware-video-encoding.md}
         - {file: post-install/sidecar.md}
-        - {file: post-install/touch-id.md, title: Touch ID}
-        - {file: post-install/updating.md, title: Updating}
-        - {file: post-install/multicall-commands.md, title: Multicall commands}
+        - {file: post-install/touch-id.md}
+        - {file: post-install/updating.md}
+        - {file: post-install/multicall-commands.md}
     - title: Reference
       pages:
         - {file: reference/installed-files.md}
@@ -135,7 +151,7 @@ redirects:
   "features/": "index.html#features"
   "installation/": "documentation.html#overview"
   "post-install/audio-dsp/": "documentation.html#audio-dsp"
-  "post-install/configuring-gpus/": "documentation.html#configure-gpus"
+  "post-install/configuring-gpus/": "documentation.html#configuring-gpus"
   "post-install/hardware-video-decoding/": "documentation.html#hardware-video-decoding"
   "post-install/updating/": "documentation.html#updating"
   "reference/installed-files/": "documentation.html#installed-files"

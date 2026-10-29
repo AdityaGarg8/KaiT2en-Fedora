@@ -34,7 +34,7 @@ one file per step or app:
 
 The experimental KaiT2en Update app compares these records with GitHub. It
 uses `scripts/fedora/update-map` from the checkout to tell which steps and
-apps have to run again. See [How to update](../post-install/updating.md).
+apps have to run again. See [Updating](../post-install/updating.md).
 
 ## Multicall commands
 
@@ -412,7 +412,7 @@ cache of recently discovered RemoteXPC ports for each desktop user:
 
 `$XDG_STATE_HOME` replaces `~/.local/state` when it is set. The snapshot is
 created on the first query or explicit refresh and is atomically replaced only
-after a successful download and parse. See [T2 Journal](../post-install/kait2en-applications.md#t2-journal)
+after a successful download and parse. See [T2 Journal](../post-install/applications/t2-journal.md)
 for the required network setup.
 
 T2 Kernel Builder keeps downloaded sources, build trees and completed-build

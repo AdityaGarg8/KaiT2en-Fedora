@@ -1,6 +1,6 @@
-# t2-debug
+# T2 Debug
 
-A gtk4/libadwaita fGUI for t2debug
+A gtk4/libadwaita GUI for t2debug
 
 ## Credits / license
 

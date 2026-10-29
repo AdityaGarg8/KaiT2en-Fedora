@@ -1,4 +1,4 @@
-# How to configure GPUs
+# Configuring GPUs
 
 If a Mac has a dGPU, it boots from it and uses it as the primary display
 adapter by default. Which GPU options KAIT2EN offers depends on the model:
@@ -13,7 +13,7 @@ adapter by default. Which GPU options KAIT2EN offers depends on the model:
   which carries their 5K panel support.
 - **Mac Pros** have no iGPU, so there is nothing to configure.
 
-## MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4: enable hybrid graphics
+## Hybrid graphics on MacBookPro15,1, 16,1 and 16,4
 
 KAIT2EN installs **T2 Hybrid GPU Control** on these models. Open it from the
 application menu and enable **Hybrid graphics**, then reboot.

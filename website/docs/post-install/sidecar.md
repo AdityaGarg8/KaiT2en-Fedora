@@ -1,4 +1,4 @@
-# Streaming Using Sidecar
+# Streaming using Sidecar
 
 With the T2's Sidecar encoder, the desktop can be streamed to an Android tablet,
 iPad, a phone or another computer. [Sunshine](https://github.com/LizardByte/Sunshine)

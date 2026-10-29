@@ -87,6 +87,14 @@ function switchGalleryImage(thumb) {
     thumb.classList.add('active');
 }
 
+// Collapsible sub-entries in the documentation navigation
+function toggleNavChildren(button, open) {
+    const list = button.nextElementSibling;
+    const show = open === undefined ? list.hidden : open;
+    list.hidden = !show;
+    button.setAttribute('aria-expanded', String(show));
+}
+
 // Scroll Spy for Sidebar Navigation
 document.addEventListener('DOMContentLoaded', function() {
     const navLinks = document.querySelectorAll('.page-nav a');
@@ -100,6 +108,8 @@ document.addEventListener('DOMContentLoaded', function() {
             link.classList.remove('active');
             if (link.getAttribute('href') === '#' + id) {
                 link.classList.add('active');
+                const parent = link.closest('.nav-parent');
+                if (parent) toggleNavChildren(parent.querySelector('.nav-toggle'), true);
             }
         });
     }

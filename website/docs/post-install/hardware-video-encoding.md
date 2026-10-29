@@ -36,7 +36,7 @@ with `Encoder requires nv12 pixel format`.
 Fedora's ffmpeg does not know `P010` on V4L2 devices, so 10-bit output is
 not available from the command line. Use the HandBrake build for Main 10.
 
-### HandBrake with T2 AVE Support
+### HandBrake with T2 AVE support
 
 The `t2-ave` branch of [our HandBrake fork](https://github.com/deqrocks/HandBrake)
 adds the encoder as **H.265 (Apple T2 AVE)** and teaches its bundled ffmpeg

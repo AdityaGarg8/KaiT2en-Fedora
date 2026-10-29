@@ -1,4 +1,4 @@
-### This Is Not Easy to Explain
+### This is not easy to explain
 
 This one is a bit of a read. But while writing, I discovered that non-nerds
 wouldn't even understand what I'm talking about without knowing the context.
@@ -25,7 +25,7 @@ work. That's like squeezing it in. So they tried and failed or even never tried.
 Upstreaming Apple stuff is difficult. Because it's unconventional hardware.
 It needs a lot of explaining why the code is like it is.
 
-### Going Upstream = Moving Against The Flow
+### Going upstream = moving against the flow
 
 Traditional distros like CachyOS or T2Linux work around this by shipping patched
 kernels. The patches are not created by the distro people. T2Linux collects
@@ -62,7 +62,7 @@ directly and we can submit to upstream. Third-party maintainers can choose to
 package our code or just profit from upstreamed patches. Devs can directly PR
 to us.
 
-### Stream Me Up, Linus!
+### Stream me up, Linus!
 
 So KAIT2EN is specialized exclusively for T2 Macs. We deliver T2 drivers and
 dedicated T2 utilities. For you this is like cherry-picking: standard upstream
@@ -78,7 +78,7 @@ Linux from official sources just like everyone else. And specialized distros or
 repos that are scattered all around the interwebs are no longer needed to
 maintain the code.
 
-### Yes, We Know There Is Apple Silicon
+### Yes, we know there is Apple Silicon
 
 But someone needs to close the gap! We truly believe T2 MacBooks can make
 perfect Linux laptops. Once everything is properly fixed, models like the
@@ -104,7 +104,7 @@ they? And if you can get hold of one for cheap for study or travel, you will
 appreciate when you just can run Linux on it natively. Without the need of
 reading half the Internet about how to make it work. Somehow.
 
-### Is The Grass Greener On The KAIT2EN Side?
+### Is the grass greener on the KAIT2EN side?
 
 Our grass is KAIT2EN red. There is a lot of discussion and arguing involved
 when you want to get things moving. It's the sound of grinding gears while

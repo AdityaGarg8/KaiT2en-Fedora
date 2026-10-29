@@ -1,4 +1,4 @@
-# KaiT2en t2-journal
+# t2-journal
 
 t2-journal can fetch Apple T2 bridgeOS logs and merge them with a selected 
 Linux boot. The application keeps one parsed BridgeOS snapshot until you run
